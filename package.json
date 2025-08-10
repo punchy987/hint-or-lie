@@ -1,0 +1,15 @@
+{
+  "name": "hint-or-lie",
+  "version": "1.0.0",
+  "description": "Jeu multijoueur en ligne - Hint or Lie (by Mits)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "author": "Mits",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^5.1.0",
+    "socket.io": "^4.8.1"
+  }
+}

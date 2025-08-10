@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hint or Lie (by Mits)</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    :root { color-scheme: dark; }
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#0b0f14;color:#e8eef6}
+    .wrap{max-width:720px;margin:0 auto;padding:16px}
+    .card{background:#121823;border:1px solid #1e2a3a;border-radius:16px;padding:16px;box-shadow:0 6px 20px rgba(0,0,0,.25)}
+    .row{display:flex;gap:8px;flex-wrap:wrap}
+    input,button{width:100%;padding:12px;border-radius:12px;border:1px solid #29384e;background:#0f1520;color:#e8eef6}
+    button{background:#2563eb;border:none;font-weight:700;cursor:pointer}
+    button:active{transform:scale(0.98)}
+    .pill{padding:6px 10px;border:1px solid #29384e;border-radius:999px;display:inline-block}
+    .list{display:grid;grid-template-columns:1fr auto;gap:8px}
+    .muted{color:#9fb0c5}
+
+    /* Scoreboard en bas (identique mobile/desktop) */
+    #scoreboard{
+      max-width:720px;margin:16px auto 24px;background:#0f1520;
+      border:1px solid #29384e;border-radius:12px;padding:12px;
+    }
+    #scoreboard h4{margin:0 0 8px 0;font-size:14px}
+    #scoreboard ul{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:1fr auto;row-gap:6px}
+    #scoreboard li{display:contents}
+    #scoreboard li span:last-child{justify-self:end;color:#9fb0c5}
+
+    /* Modal gagnant */
+    #modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:20}
+    #modal .box{background:#121823;border:1px solid #1e2a3a;border-radius:16px;padding:16px;max-width:360px}
+  </style>
+</head>
+<body>
+
+<div id="modal">
+  <div class="box">
+    <h3>Vainqueur 🎉</h3>
+    <p id="winners-text"></p>
+    <div class="row">
+      <button id="btn-modal-lobby">Retour au salon</button>
+      <button id="btn-modal-replay">Rejouer (scores 0)</button>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+  <!-- HOME -->
+  <div class="card" id="screen-home">
+    <h2>Hint or Lie <small>(by Mits)</small></h2>
+    <div class="row"><input id="name" placeholder="Ton pseudo" maxlength="16" /><button id="btn-create">Créer</button></div>
+    <div class="row"><input id="join-code" placeholder="Code salle (ex: 4L8Q)" maxlength="6" /><button id="btn-join">Rejoindre</button></div>
+    <p class="muted">3–10 joueurs • 1 imposteur • Indices → Vote → Révélation</p>
+  </div>
+
+  <!-- LOBBY -->
+  <div class="card" id="screen-lobby" style="display:none">
+    <h3>Salon <span id="lobby-code" class="pill"></span></h3>
+    <div class="row">
+      <div class="pill" id="host-badge" style="display:none">Tu es l'hôte</div>
+      <div class="pill">Manche <span id="round-num">0</span></div>
+    </div>
+    <h4>Joueurs</h4>
+    <div id="players" class="list"></div>
+    <div class="row" id="host-actions" style="display:none;margin-top:8px">
+      <button id="btn-start">Démarrer la manche</button>
+    </div>
+  </div>
+
+  <!-- HINT -->
+  <div class="card" id="screen-hint" style="display:none">
+    <h3>Ton mot</h3>
+    <div class="row">
+      <div class="pill" id="domain-pill">Domaine</div>
+      <div class="pill" id="timer-hints">00:45</div>
+      <div class="pill" id="progress-hints">0/0</div>
+    </div>
+    <p class="muted" id="hint-instruction">Donne 1 mot lié au thème sans le révéler.</p>
+    <div class="pill" id="my-role" style="margin-top:8px"></div>
+    <h1 id="my-word"></h1>
+    <input id="hint-input" placeholder="Ton indice" maxlength="40" />
+    <div class="row"><button id="btn-send-hint">Envoyer l'indice</button></div>
+    <p class="muted" id="hint-status"></p>
+  </div>
+
+  <!-- VOTE -->
+  <div class="card" id="screen-vote" style="display:none">
+    <h3>Vote</h3>
+    <div class="row">
+      <div class="pill" id="vote-domain-pill">Domaine</div>
+      <div class="pill" id="timer-vote">00:40</div>
+      <div class="pill" id="progress-vote">0/0</div>
+    </div>
+    <p class="muted">Lis les indices → clique sur le suspect.</p>
+    <div id="hints" style="margin-top:8px"></div>
+    <h4>Choisis un suspect</h4>
+    <div id="vote-buttons" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;"></div>
+  </div>
+
+  <!-- RESULT -->
+  <div class="card" id="screen-result" style="display:none">
+    <h3>Résultat</h3>
+    <p><strong>Domaine :</strong> <span id="res-domain"></span></p>
+    <p>Mot commun: <strong id="res-common"></strong> — Mot imposteur: <strong id="res-imp"></strong></p>
+    <p>Imposteur: <strong id="res-imp-name"></strong></p>
+    <div id="personal-result" class="pill" style="margin:6px 0;"></div>
+    <div id="res-votes"></div>
+    <div class="row"><button id="btn-next" style="display:none">Manche suivante</button></div>
+  </div>
+</div>
+
+<!-- SCOREBOARD EN BAS (toujours visible) -->
+<div id="scoreboard">
+  <h4>Scores</h4>
+  <ul id="score-list"></ul>
+</div>
+
+<p class="muted" id="toast" style="display:none;text-align:center"></p>
+
+<script>
+const $=id=>document.getElementById(id);
+const socket=io();
+let me={id:null,code:null};
+let room={players:[],state:'lobby'};
+let myIsImpostor=false;
+
+function show(id){ for(const el of document.querySelectorAll('.card')) el.style.display='none'; $(id).style.display='block'; }
+function toast(msg){ const t=$('toast'); t.textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',2000); }
+function fmt(ms){ const s=Math.ceil(ms/1000); const m=Math.floor(s/60); const r=s%60; return `${String(m).padStart(2,'0')}:${String(r).padStart(2,'0')}`; }
+function beep(){ try{ const ctx=new (window.AudioContext||window.webkitAudioContext)(); const o=ctx.createOscillator(); const g=ctx.createGain(); o.type='sine'; o.frequency.value=880; o.connect(g); g.connect(ctx.destination); o.start(); setTimeout(()=>{o.stop(); ctx.close();},120);}catch{} }
+function flash(id){ const el=$(id); if(!el) return; el.style.outline='2px solid #ef4444'; setTimeout(()=>el.style.outline='',150); }
+function updateScoreboard(players){
+  if(!players) return;
+  const ul=$('score-list'); if(!ul) return;
+  ul.innerHTML='';
+  players.slice().sort((a,b)=>b.score-a.score).forEach(p=>{
+    const li=document.createElement('li');
+    li.innerHTML=`<span>${p.name}</span><span>${p.score}</span>`;
+    ul.appendChild(li);
+  });
+}
+
+$('btn-create').onclick=()=>{const name=$('name').value.trim()||'Joueur'; socket.emit('createRoom',{name});};
+$('btn-join').onclick=()=>{const name=$('name').value.trim()||'Joueur'; const code=$('join-code').value.trim().toUpperCase(); socket.emit('joinRoom',{code,name});};
+$('btn-start').onclick=()=>socket.emit('startRound');
+$('btn-next').onclick=()=>socket.emit('nextRound');
+$('btn-modal-lobby').onclick=()=>{ show('screen-lobby'); $('modal').style.display='none'; };
+$('btn-modal-replay').onclick=()=>{ socket.emit('resetScores'); $('modal').style.display='none'; };
+
+$('btn-send-hint').onclick=()=>{
+  const hint=$('hint-input').value.trim();
+  if(!hint){ toast('Écris un indice 😉'); return; }
+  socket.emit('submitHint',{hint});
+  $('btn-send-hint').disabled=true;
+  $('hint-input').disabled=true;
+  $('hint-status').textContent="Indice envoyé ✓";
+};
+
+socket.on('connect',()=>{me.id=socket.id;});
+socket.on('roomCreated',({code})=>{me.code=code; $('lobby-code').textContent=code; show('screen-lobby'); $('host-badge').style.display='inline-block'; $('host-actions').style.display='block';});
+socket.on('roomJoined',({code})=>{me.code=code; $('lobby-code').textContent=code; show('screen-lobby');});
+
+socket.on('roomUpdate',(snap)=>{
+  room=snap; $('round-num').textContent=snap.round;
+  const list=$('players'); list.innerHTML='';
+  snap.players.forEach(p=>{
+    const a=document.createElement('div'); a.textContent=p.name;
+    const b=document.createElement('div'); b.textContent='Score: '+p.score; b.className='muted'; b.style.textAlign='right';
+    list.appendChild(a); list.appendChild(b);
+  });
+  updateScoreboard(snap.players);
+});
+
+socket.on('roundInfo',({word,isImpostor,domain})=>{
+  myIsImpostor = !!isImpostor;
+  show('screen-hint');
+  $('domain-pill').textContent=`Domaine : ${domain||'?'}`;
+  $('my-role').textContent=isImpostor?'Tu es IMPOSTEUR':'Tu es Équipier';
+  $('hint-instruction').textContent = isImpostor
+    ? "Donne 1 mot qui pourrait coller au thème."
+    : "Donne 1 mot lié au thème sans le révéler.";
+  $('my-word').textContent=word;
+  $('hint-input').value=''; $('hint-input').disabled=false; $('btn-send-hint').disabled=false; $('hint-status').textContent='';
+  $('timer-vote').textContent='00:40';
+  $('progress-hints').textContent='0/0';
+  $('progress-vote').textContent='0/0';
+});
+
+socket.on('hintAck', ()=>{ $('hint-status').textContent="Indice reçu par le serveur ✓"; });
+
+socket.on('allHints', ({hints, domain})=>{
+  show('screen-vote');
+  $('vote-domain-pill').textContent=`Domaine : ${domain||'?'}`;
+  const box=$('hints'); box.innerHTML='';
+  hints.forEach(h=>{ const p=document.createElement('p'); p.innerHTML=`<strong>${h.name}</strong>: ${h.hint||''}`; box.appendChild(p); });
+
+  const cont=$('vote-buttons'); cont.innerHTML='';
+  hints.forEach(h=>{
+    const btn=document.createElement('button');
+    btn.textContent=h.name;
+    btn.onclick=()=>{
+      btn.textContent=h.name+' ✓';
+      Array.from(cont.querySelectorAll('button')).forEach(b=>b.disabled=true);
+      socket.emit('submitVote',{targetId:h.id});
+      toast('Vote envoyé');
+    };
+    cont.appendChild(btn);
+  });
+});
+
+socket.on('voteAck', ()=>{ /* option: toast('Vote reçu ✓'); */ });
+
+socket.on('roundResult',(res)=>{
+  show('screen-result');
+  $('res-domain').textContent=res.domain || '?';
+  $('res-common').textContent=res.common; $('res-imp').textContent=res.impostor; $('res-imp-name').textContent=res.impostorName||'(?)';
+
+  // GAGNÉ / PERDU personnel
+  let text='', won=false;
+  if (myIsImpostor) {
+    won = !res.impostorCaught;
+    text = won ? 'GAGNÉ ✅ Tu es resté discret.' : 'PERDU ❌ Tu as été repéré.';
+  } else {
+    won = res.impostorCaught;
+    text = won ? 'GAGNÉ ✅ L’imposteur a été démasqué.' : 'PERDU ❌ L’imposteur t’a eu.';
+  }
+  const badge=$('personal-result');
+  badge.textContent=text;
+  badge.style.borderColor = won ? '#16a34a' : '#ef4444';
+
+  const box=$('res-votes'); box.innerHTML=''; const ul=document.createElement('ul');
+  for(const [tid,c] of Object.entries(res.votes)){
+    const name=(room.players.find(p=>p.id===tid)||{}).name||tid;
+    const li=document.createElement('li'); li.textContent=`${name}: ${c} vote(s)`; ul.appendChild(li);
+  }
+  box.appendChild(ul);
+
+  $('btn-next').style.display='block';
+});
+
+// Timer synchro + bip/flash finaux
+socket.on('timer', ({ phase, leftMs })=>{
+  const left=Math.ceil(leftMs/1000);
+  if (phase==='hints'){
+    const el=$('timer-hints'); if (el) el.textContent=fmt(leftMs);
+    if (left>0 && left<=5){ flash('timer-hints'); beep(); }
+    if (left<=0){ $('btn-send-hint')?.setAttribute('disabled','true'); $('hint-input')?.setAttribute('disabled','true'); }
+  } else if (phase==='voting'){
+    const el=$('timer-vote'); if (el) el.textContent=fmt(leftMs);
+    if (left>0 && left<=5){ flash('timer-vote'); beep(); }
+    if (left<=0){ Array.from(($('vote-buttons')||document.createElement('div')).querySelectorAll('button')).forEach(b=>b.disabled=true); }
+  }
+});
+
+// Progression X/Y
+socket.on('phaseProgress', ({ phase, submitted, total })=>{
+  if (phase==='hints'){ const el=$('progress-hints'); if(el) el.textContent=`${submitted}/${total}`; }
+  else if (phase==='voting'){ const el=$('progress-vote'); if(el) el.textContent=`${submitted}/${total}`; }
+});
+
+// Fin de partie (10 points)
+socket.on('gameOver', ({ winners })=>{
+  const names = winners.map(w=>`${w.name} (${w.score})`).join(', ');
+  $('winners-text').textContent = winners.length>1 ? `Égalité ! ${names}` : `${names} gagne la partie !`;
+  $('modal').style.display='flex';
+  show('screen-lobby');
+});
+
+// Scores remis à zéro (rejouer)
+socket.on('scoresReset', ()=>{ toast('Scores remis à 0'); show('screen-lobby'); });
+
+socket.on('actionAck', ({ action })=>{
+  if (action==='startRound') toast('Manche démarrée 🚀');
+  if (action==='nextRound') toast('Nouvelle manche ➡️');
+});
+
+socket.on('errorMsg',(m)=>toast(m));
+</script>
+</body>
+</html>
