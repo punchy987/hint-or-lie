@@ -50,14 +50,11 @@
   <!-- HOME -->
   <div class="card" id="screen-home">
     <h2>Hint or Lie <small>(by Mits)</small></h2>
-
-    <!-- RÈGLES COURTES (ajout) -->
     <div class="muted" id="rules" style="margin:10px 0 14px;line-height:1.35">
-      <strong>Bienvenue dans <em>Hint or Lie (by Mits)</em> ! 🎯</strong><br>
+      <strong>Bienvenue dans <em>Hint or Lie</em> ! 🎯</strong><br>
       Donne un indice pour ton mot secret… mais attention&nbsp;: un imposteur a un mot différent&nbsp;!<br>
       Bluffe, devine et démasque pour marquer des points. Le premier à 10 gagne la partie&nbsp;! 🏆
     </div>
-
     <div class="row"><input id="name" placeholder="Ton pseudo" maxlength="16" /><button id="btn-create">Créer</button></div>
     <div class="row"><input id="join-code" placeholder="Code salle (ex: 4L8Q)" maxlength="6" /><button id="btn-join">Rejoindre</button></div>
     <p class="muted">3–10 joueurs • 1 imposteur • Indices → Vote → Révélation</p>
@@ -110,6 +107,9 @@
   <!-- RESULT -->
   <div class="card" id="screen-result" style="display:none">
     <h3>Résultat</h3>
+    <div class="row">
+      <div class="pill" id="timer-reveal">00:20</div>
+    </div>
     <p><strong>Domaine :</strong> <span id="res-domain"></span></p>
     <p>Mot commun: <strong id="res-common"></strong> — Mot imposteur: <strong id="res-imp"></strong></p>
     <p>Imposteur: <strong id="res-imp-name"></strong></p>
@@ -194,6 +194,7 @@ socket.on('roundInfo',({word,isImpostor,domain})=>{
   $('timer-vote').textContent='00:40';
   $('progress-hints').textContent='0/0';
   $('progress-vote').textContent='0/0';
+  $('timer-reveal').textContent='00:20';
 });
 
 socket.on('hintAck', ()=>{ $('hint-status').textContent="Indice reçu par le serveur ✓"; });
@@ -259,6 +260,10 @@ socket.on('timer', ({ phase, leftMs })=>{
     const el=$('timer-vote'); if (el) el.textContent=fmt(leftMs);
     if (left>0 && left<=5){ flash('timer-vote'); beep(); }
     if (left<=0){ Array.from(($('vote-buttons')||document.createElement('div')).querySelectorAll('button')).forEach(b=>b.disabled=true); }
+  } else if (phase==='reveal'){
+    const el=$('timer-reveal'); if (el) el.textContent=fmt(leftMs);
+    if (left>0 && left<=5){ flash('timer-reveal'); beep(); }
+    if (left<=0){ $('btn-next')?.setAttribute('disabled','true'); }
   }
 });
 

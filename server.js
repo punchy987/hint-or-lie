@@ -1,4 +1,4 @@
-// server.js — domaines + anti-répétition + timers + ACK + progression + auto-vote + win@10pts
+// server.js — domaines + anti-répétition + timers (indices/vote/révélation) + ACK + progression + auto-vote + win@10pts
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -10,7 +10,8 @@ app.use(express.static('public'));
 
 // Durées (secondes)
 const HINT_SECONDS = 45;
-const VOTE_SECONDS = 40;
+const VOTE_SECONDS  = 40;
+const REVEAL_SECONDS = 20; // nouvel écran résultat : 20s
 
 // État en mémoire
 // room: { hostId, state, round, players(Map), words, lastDomain, lastCommon, timer:{interval,deadline,phase} }
@@ -19,11 +20,12 @@ const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const genCode = () => Array.from({ length: 4 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
 
-// ----- Domaines -----
+// ----- Domaines (Tech retiré, Fruits renommé et enrichi) -----
 const DOMAINS = {
-  Fruits: [
+  "Fruits fleurs legumes": [
     'Mangue','Papaye','Ananas','Banane','Pomme','Poire','Raisin','Myrtille','Pasteque','Melon','Citron',
-    'Hibiscus','Orange','Kiwi','Fraise','Coco','Concombre','Tomate','Poivron','Oignons','Tipanier','Rose','Corossol'
+    'Orange','Kiwi','Fraise','Coco','Concombre','Tomate','Poivron','Oignons','Hibiscus','Tipanier','Rose',
+    'Corossol','Laitue','Carotte','Aubergine','Courgette','Basilic'
   ],
   Animaux: [
     'Chat','Chien','Tortue','Kangourou','Dauphin','Requin','Panda','Koala','Tigre','Lion','Perroquet','Toucan',
@@ -31,10 +33,11 @@ const DOMAINS = {
   ],
   Villes: [
     'Paris','Londres','Tokyo','Osaka','New York','Los Angeles','Rome','Athenes','Madrid','Barcelone','Berlin','Munich',
-    'Rio','Sao Paulo','Sydney','Melbourne','Montreal','Toronto','Le Caire','Alexandrie','Hanoi','Dubai','Abu Dhabi','Manchester'
+    'Rio','Sao Paulo','Sydney','Melbourne','Montreal','Toronto','Le Caire','Alexandrie','Dubai','Abu Dhabi','Manchester'
   ],
   Pays: [
-    'France','Japon','Bresil','Canada','Egypte','Italie','Espagne','Allemagne','Australie','Maroc','Mexique','USA','Chine','Inde','Royaume-Uni'
+    'France','Japon','Bresil','Canada','Egypte','Italie','Espagne','Allemagne','Australie','Maroc',
+    'Mexique','USA','Chine','Inde','Royaume-Uni'
   ],
   Sports: [
     'Football','Rugby','Tennis','Badminton','Basket','Handball','Boxe','MMA','Formule 1','Rallye','Surf','Voile',
@@ -43,9 +46,6 @@ const DOMAINS = {
   Objets: [
     'Chaise','Tabouret','Table','Bureau','Telephone','Tablette','Ordinateur','Console','Cle','Serrure','Lampe','Bougie',
     'Valise','Sac a dos','Montre','Bracelet','Lunettes','Casque','Stylo','Crayon','Tasse','Verre','Ciseaux','Cutter'
-  ],
-  Tech: [
-    'Android','iOS','Windows','Linux','macOS','YouTube','Netflix','Disney+','PlayStation','Xbox','Apple','Chrome','Firefox'
   ],
   Nature: [
     'Plage','Montagne','Foret','Desert','Lac','Riviere','Ile','Continent','Volcan','Glacier','Cascade','Geyser','Ciel','Ocean','Soleil','Lune'
@@ -60,7 +60,7 @@ const DOMAINS = {
     'Rouge','Orange','Bleu','Cyan','Vert','Lime','Noir','Gris','Blanc','Ivoire','Cercle','Ellipse','Carre','Rectangle','Triangle','Pyramide'
   ],
   Cinema: [
-    'Star Wars','Star Trek','Harry Potter','Le Seigneur des Anneaux','Marvel','DC Comics','Batman','Superman',
+    'Star Wars','Harry Potter','Le Seigneur des Anneaux','Marvel','DC Comics','Batman','Superman',
     'Iron Man','Captain America','Avengers','Black Panther','Doctor Strange','Spider-Man','Hulk',
     'Joker','Wonder Woman','Aquaman','The Flash',
     'Avatar','Titanic','Jurassic Park','Jurassic World','Indiana Jones','Matrix','Inception','Interstellar',
@@ -68,7 +68,8 @@ const DOMAINS = {
   ],
   Manga: [
     'Naruto','One Piece','Dragon Ball','Bleach','Pokemon','My Hero Academia','Attack on Titan','Death Note',
-    'Fullmetal Alchemist','One Punch Man','Demon Slayer','Jujutsu Kaisen','Hunter x Hunter','Fairy Tail','Black Clover','Chainsaw Man','Blue Lock','Tokyo Ghoul','Spy x Family'
+    'Fullmetal Alchemist','One Punch Man','Demon Slayer','Jujutsu Kaisen','Hunter x Hunter',
+    'Fairy Tail','Black Clover','Chainsaw Man',
   ],
   Personnalites: [
     'Beyonce','Rihanna','Cristiano Ronaldo','Lionel Messi','Taylor Swift','Ariana Grande','Keanu Reeves','Tom Cruise',
@@ -234,15 +235,21 @@ function finishVoting(code){
   // --- vérif win @ 10 points ---
   const playersArr = Array.from(r.players.values());
   const maxScore = Math.max(...playersArr.map(p => p.score));
+
   if (maxScore >= 10){
     const winners = Array.from(r.players.entries())
       .filter(([_,p]) => p.score === maxScore)
       .map(([id,p]) => ({ id, name:p.name, score:p.score }));
-    // repasser au salon et annoncer
     r.state = 'lobby';
     io.to(code).emit('gameOver', { winners });
     broadcast(code);
+    return; // ne pas lancer le timer reveal si la partie est terminée
   }
+
+  // Pas de vainqueur : rester sur l'écran résultat 20s puis enchaîner
+  startPhaseTimer(code, REVEAL_SECONDS, 'reveal', ()=>{
+    startRound(code); // auto "manche suivante" si l'hôte ne clique pas
+  });
 }
 
 // Sockets
