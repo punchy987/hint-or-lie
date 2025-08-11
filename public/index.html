@@ -10,25 +10,39 @@
     body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#0b0f14;color:#e8eef6}
     .wrap{max-width:720px;margin:0 auto;padding:16px}
     .card{background:#121823;border:1px solid #1e2a3a;border-radius:16px;padding:16px;box-shadow:0 6px 20px rgba(0,0,0,.25)}
-    .row{display:flex;gap:8px;flex-wrap:wrap}
+    .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    .header-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
     input,button{width:100%;padding:12px;border-radius:12px;border:1px solid #29384e;background:#0f1520;color:#e8eef6}
     button{background:#2563eb;border:none;font-weight:700;cursor:pointer}
     button:active{transform:scale(0.98)}
     .pill{padding:6px 10px;border:1px solid #29384e;border-radius:999px;display:inline-block}
-    .list{display:grid;grid-template-columns:1fr auto;gap:8px}
     .muted{color:#9fb0c5}
+    h1,h2,h3,h4{margin:0 0 8px 0}
 
-    #scoreboard{
-      max-width:720px;margin:16px auto 24px;background:#0f1520;
-      border:1px solid #29384e;border-radius:12px;padding:12px;
-    }
+    /* Rôle très visible (vert/rouge) */
+    .role{font-weight:800;border:1px solid currentColor;border-radius:999px;padding:6px 12px;display:inline-block}
+    .role.crew{color:#16a34a}
+    .role.imp{color:#ef4444}
+
+    /* Section helpers */
+    .section-title{font-size:18px;margin:6px 0}
+    .hint-word{font-size:34px;font-weight:800;letter-spacing:.3px;margin:4px 0 8px}
+
+    /* Scoreboard */
+    #scoreboard{max-width:720px;margin:16px auto 24px;background:#0f1520;border:1px solid #29384e;border-radius:12px;padding:12px}
     #scoreboard h4{margin:0 0 8px 0;font-size:14px}
     #scoreboard ul{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:1fr auto;row-gap:6px}
     #scoreboard li{display:contents}
     #scoreboard li span:last-child{justify-self:end;color:#9fb0c5}
 
+    /* Modal gagnant */
     #modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:20}
     #modal .box{background:#121823;border:1px solid #1e2a3a;border-radius:16px;padding:16px;max-width:360px}
+
+    /* Résultat personnel banner */
+    .result-banner{border:1px solid; border-radius:10px; padding:8px 12px; display:inline-block; margin:6px 0}
+    .result-win{color:#16a34a;border-color:#16a34a}
+    .result-lose{color:#ef4444;border-color:#ef4444}
   </style>
 </head>
 <body>
@@ -48,11 +62,7 @@
   <!-- HOME -->
   <div class="card" id="screen-home">
     <h2>Hint or Lie <small>(by Mits)</small></h2>
-    <div class="muted" id="rules" style="margin:10px 0 14px;line-height:1.35">
-      <strong>Bienvenue dans <em>Hint or Lie</em> ! 🎯</strong><br>
-      Donne un indice pour ton mot secret… mais attention&nbsp;: un imposteur a un mot différent&nbsp;!<br>
-      Bluffe, devine et démasque pour marquer des points. Le premier à 10 gagne la partie&nbsp;! 🏆
-    </div>
+    <p class="muted" style="margin:6px 0 12px">Donne un indice pour ton mot secret… un imposteur a un mot différent. Bluffe, vote, démasque. Le premier à 10 gagne !</p>
     <div class="row"><input id="name" placeholder="Ton pseudo" maxlength="16" /><button id="btn-create">Créer</button></div>
     <div class="row"><input id="join-code" placeholder="Code salle (ex: 4L8Q)" maxlength="6" /><button id="btn-join">Rejoindre</button></div>
     <p class="muted">3–10 joueurs • 1 imposteur • Indices → Vote → Révélation</p>
@@ -60,29 +70,27 @@
 
   <!-- LOBBY -->
   <div class="card" id="screen-lobby" style="display:none">
-    <h3>Salon <span id="lobby-code" class="pill"></span></h3>
-    <div class="row">
+    <div class="header-row">
       <div class="pill" id="host-badge" style="display:none">Tu es l'hôte</div>
       <div class="pill">Manche <span id="round-num">0</span></div>
+      <div class="pill">Code <span id="lobby-code"></span></div>
     </div>
-    <h4>Joueurs</h4>
-    <div id="players" class="list"></div>
-    <div class="row" id="host-actions" style="display:none;margin-top:8px">
-      <button id="btn-start">Démarrer la manche</button>
-    </div>
+    <h3 class="section-title">Joueurs</h3>
+    <div id="players" class="list" style="margin-bottom:8px"></div>
+    <div class="row" id="host-actions" style="display:none"><button id="btn-start">Démarrer la manche</button></div>
   </div>
 
   <!-- HINT -->
   <div class="card" id="screen-hint" style="display:none">
-    <h3>Ton mot</h3>
-    <div class="row">
+    <div class="header-row">
       <div class="pill" id="domain-pill">Domaine</div>
       <div class="pill" id="timer-hints">00:45</div>
       <div class="pill" id="progress-hints">0/0</div>
     </div>
-    <p class="muted" id="hint-instruction">Donne 1 mot lié au thème sans le révéler.</p>
-    <div class="pill" id="my-role" style="margin-top:8px"></div>
-    <h1 id="my-word"></h1>
+    <div><span id="my-role" class="role">Rôle</span></div>
+    <h3 class="section-title">Ton mot</h3>
+    <div id="my-word" class="hint-word">?</div>
+    <p class="muted" id="hint-instruction" style="margin-top:6px">Donne 1 mot lié au thème sans le révéler.</p>
     <input id="hint-input" placeholder="Ton indice" maxlength="40" />
     <div class="row"><button id="btn-send-hint">Envoyer l'indice</button></div>
     <p class="muted" id="hint-status"></p>
@@ -90,29 +98,28 @@
 
   <!-- VOTE -->
   <div class="card" id="screen-vote" style="display:none">
-    <h3>Vote</h3>
-    <div class="row">
+    <div class="header-row">
       <div class="pill" id="vote-domain-pill">Domaine</div>
       <div class="pill" id="timer-vote">00:40</div>
       <div class="pill" id="progress-vote">0/0</div>
     </div>
-    <p class="muted">Lis les indices → clique sur le suspect.</p>
-    <div id="hints" style="margin-top:8px"></div>
-    <h4>Choisis un suspect</h4>
+    <h3 class="section-title">Vote</h3>
+    <p class="muted" style="margin-bottom:8px">Lis les indices puis choisis le suspect.</p>
+    <div id="hints" style="margin:8px 0"></div>
     <div id="vote-buttons" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;"></div>
   </div>
 
   <!-- RESULT -->
   <div class="card" id="screen-result" style="display:none">
-    <h3>Résultat</h3>
-    <div class="row">
+    <div class="header-row">
       <div class="pill" id="timer-reveal">00:20</div>
     </div>
-    <p><strong>Domaine :</strong> <span id="res-domain"></span></p>
-    <p>Mot commun: <strong id="res-common"></strong> — Mot imposteur: <strong id="res-imp"></strong></p>
-    <p>Imposteur: <strong id="res-imp-name"></strong></p>
-    <div id="personal-result" class="pill" style="margin:6px 0;"></div>
-    <div id="res-votes"></div>
+    <div id="personal-banner" class="result-banner">Résultat</div>
+    <h3 class="section-title">Résumé</h3>
+    <p class="muted"><strong>Domaine :</strong> <span id="res-domain"></span></p>
+    <p>Mot commun : <strong id="res-common"></strong> — Mot imposteur : <strong id="res-imp"></strong></p>
+    <p>Imposteur : <strong id="res-imp-name"></strong></p>
+    <div id="res-votes" style="margin:8px 0"></div>
     <div class="row"><button id="btn-next" style="display:none">Manche suivante</button></div>
   </div>
 </div>
@@ -148,6 +155,7 @@ function updateScoreboard(players){
   });
 }
 
+/* Home / Lobby */
 $('btn-create').onclick=()=>{const name=$('name').value.trim()||'Joueur'; socket.emit('createRoom',{name});};
 $('btn-join').onclick=()=>{const name=$('name').value.trim()||'Joueur'; const code=$('join-code').value.trim().toUpperCase(); socket.emit('joinRoom',{code,name});};
 $('btn-start').onclick=()=>socket.emit('startRound');
@@ -179,15 +187,20 @@ socket.on('roomUpdate',(snap)=>{
   updateScoreboard(snap.players);
 });
 
+/* Hints */
 socket.on('roundInfo',({word,isImpostor,domain})=>{
   myIsImpostor = !!isImpostor;
   show('screen-hint');
   $('domain-pill').textContent=`Domaine : ${domain||'?'}`;
-  $('my-role').textContent=isImpostor?'Tu es IMPOSTEUR':'Tu es Équipier';
+  const roleEl=$('my-role');
+  roleEl.textContent=isImpostor?'Tu es IMPOSTEUR':'Tu es Équipier';
+  roleEl.className = 'role ' + (isImpostor?'imp':'crew');
+
   $('hint-instruction').textContent = isImpostor
     ? "Donne 1 mot qui pourrait coller au thème."
     : "Donne 1 mot lié au thème sans le révéler.";
   $('my-word').textContent=word;
+
   $('hint-input').value=''; $('hint-input').disabled=false; $('btn-send-hint').disabled=false; $('hint-status').textContent='';
   $('timer-vote').textContent='00:40';
   $('progress-hints').textContent='0/0';
@@ -196,8 +209,6 @@ socket.on('roundInfo',({word,isImpostor,domain})=>{
 });
 
 socket.on('hintAck', ()=>{ $('hint-status').textContent="Indice accepté ✓"; });
-
-// NOUVEAU : si l’indice est refusé par le serveur
 socket.on('hintRejected', ({reason})=>{
   $('hint-status').textContent = `Refusé : ${reason}`;
   $('btn-send-hint').disabled=false;
@@ -205,11 +216,12 @@ socket.on('hintRejected', ({reason})=>{
   $('hint-input').focus();
 });
 
+/* Voting */
 socket.on('allHints', ({hints, domain})=>{
   show('screen-vote');
   $('vote-domain-pill').textContent=`Domaine : ${domain||'?'}`;
   const box=$('hints'); box.innerHTML='';
-  hints.forEach(h=>{ const p=document.createElement('p'); p.innerHTML=`<strong>${h.name}</strong>: ${h.hint||''}`; box.appendChild(p); });
+  hints.forEach(h=>{ const p=document.createElement('p'); p.innerHTML=`<strong>${h.name}</strong> : ${h.hint||''}`; box.appendChild(p); });
 
   const cont=$('vote-buttons'); cont.innerHTML='';
   hints.forEach(h=>{
@@ -224,36 +236,32 @@ socket.on('allHints', ({hints, domain})=>{
     cont.appendChild(btn);
   });
 });
+socket.on('voteAck', ()=>{ /* ok */ });
 
-socket.on('voteAck', ()=>{ /* toast('Vote reçu ✓'); */ });
-
+/* Results */
 socket.on('roundResult',(res)=>{
   show('screen-result');
   $('res-domain').textContent=res.domain || '?';
   $('res-common').textContent=res.common; $('res-imp').textContent=res.impostor; $('res-imp-name').textContent=res.impostorName||'(?)';
 
-  let text='', won=false;
-  if (myIsImpostor) {
-    won = !res.impostorCaught;
-    text = won ? 'GAGNÉ ✅ Tu es resté discret.' : 'PERDU ❌ Tu as été repéré.';
-  } else {
-    won = res.impostorCaught;
-    text = won ? 'GAGNÉ ✅ L’imposteur a été démasqué.' : 'PERDU ❌ L’imposteur t’a eu.';
-  }
-  const badge=$('personal-result');
-  badge.textContent=text;
-  badge.style.borderColor = won ? '#16a34a' : '#ef4444';
+  let text='', win=false;
+  if (myIsImpostor) { win = !res.impostorCaught; text = win ? 'GAGNÉ ✅ Tu es resté discret.' : 'PERDU ❌ Tu as été repéré.'; }
+  else { win = res.impostorCaught; text = win ? 'GAGNÉ ✅ L’imposteur a été démasqué.' : 'PERDU ❌ L’imposteur t’a eu.'; }
+  const banner=$('personal-banner');
+  banner.textContent=text;
+  banner.className = 'result-banner ' + (win?'result-win':'result-lose');
 
   const box=$('res-votes'); box.innerHTML=''; const ul=document.createElement('ul');
   for(const [tid,c] of Object.entries(res.votes)){
     const name=(room.players.find(p=>p.id===tid)||{}).name||tid;
-    const li=document.createElement('li'); li.textContent=`${name}: ${c} vote(s)`; ul.appendChild(li);
+    const li=document.createElement('li'); li.textContent=`${name} : ${c} vote(s)`; ul.appendChild(li);
   }
   box.appendChild(ul);
 
   $('btn-next').style.display='block';
 });
 
+/* Timers + Progress */
 socket.on('timer', ({ phase, leftMs })=>{
   const left=Math.ceil(leftMs/1000);
   if (phase==='hints'){
@@ -270,26 +278,23 @@ socket.on('timer', ({ phase, leftMs })=>{
     if (left<=0){ $('btn-next')?.setAttribute('disabled','true'); }
   }
 });
-
 socket.on('phaseProgress', ({ phase, submitted, total })=>{
   if (phase==='hints'){ const el=$('progress-hints'); if(el) el.textContent=`${submitted}/${total}`; }
   else if (phase==='voting'){ const el=$('progress-vote'); if(el) el.textContent=`${submitted}/${total}`; }
 });
 
+/* Game over & misc */
 socket.on('gameOver', ({ winners })=>{
   const names = winners.map(w=>`${w.name} (${w.score})`).join(', ');
   $('winners-text').textContent = winners.length>1 ? `Égalité ! ${names}` : `${names} gagne la partie !`;
   $('modal').style.display='flex';
   show('screen-lobby');
 });
-
 socket.on('scoresReset', ()=>{ toast('Scores remis à 0'); show('screen-lobby'); });
-
 socket.on('actionAck', ({ action })=>{
   if (action==='startRound') toast('Manche démarrée 🚀');
   if (action==='nextRound') toast('Nouvelle manche ➡️');
 });
-
 socket.on('errorMsg',(m)=>toast(m));
 </script>
 </body>
