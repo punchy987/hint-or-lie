@@ -18,7 +18,6 @@
     .list{display:grid;grid-template-columns:1fr auto;gap:8px}
     .muted{color:#9fb0c5}
 
-    /* Scoreboard en bas (identique mobile/desktop) */
     #scoreboard{
       max-width:720px;margin:16px auto 24px;background:#0f1520;
       border:1px solid #29384e;border-radius:12px;padding:12px;
@@ -28,7 +27,6 @@
     #scoreboard li{display:contents}
     #scoreboard li span:last-child{justify-self:end;color:#9fb0c5}
 
-    /* Modal gagnant */
     #modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:20}
     #modal .box{background:#121823;border:1px solid #1e2a3a;border-radius:16px;padding:16px;max-width:360px}
   </style>
@@ -119,7 +117,7 @@
   </div>
 </div>
 
-<!-- SCOREBOARD EN BAS (toujours visible) -->
+<!-- SCOREBOARD -->
 <div id="scoreboard">
   <h4>Scores</h4>
   <ul id="score-list"></ul>
@@ -135,7 +133,7 @@ let room={players:[],state:'lobby'};
 let myIsImpostor=false;
 
 function show(id){ for(const el of document.querySelectorAll('.card')) el.style.display='none'; $(id).style.display='block'; }
-function toast(msg){ const t=$('toast'); t.textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',2000); }
+function toast(msg){ const t=$('toast'); t.textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',2200); }
 function fmt(ms){ const s=Math.ceil(ms/1000); const m=Math.floor(s/60); const r=s%60; return `${String(m).padStart(2,'0')}:${String(r).padStart(2,'0')}`; }
 function beep(){ try{ const ctx=new (window.AudioContext||window.webkitAudioContext)(); const o=ctx.createOscillator(); const g=ctx.createGain(); o.type='sine'; o.frequency.value=880; o.connect(g); g.connect(ctx.destination); o.start(); setTimeout(()=>{o.stop(); ctx.close();},120);}catch{} }
 function flash(id){ const el=$(id); if(!el) return; el.style.outline='2px solid #ef4444'; setTimeout(()=>el.style.outline='',150); }
@@ -163,7 +161,7 @@ $('btn-send-hint').onclick=()=>{
   socket.emit('submitHint',{hint});
   $('btn-send-hint').disabled=true;
   $('hint-input').disabled=true;
-  $('hint-status').textContent="Indice envoyé ✓";
+  $('hint-status').textContent="Indice envoyé…";
 };
 
 socket.on('connect',()=>{me.id=socket.id;});
@@ -197,7 +195,15 @@ socket.on('roundInfo',({word,isImpostor,domain})=>{
   $('timer-reveal').textContent='00:20';
 });
 
-socket.on('hintAck', ()=>{ $('hint-status').textContent="Indice reçu par le serveur ✓"; });
+socket.on('hintAck', ()=>{ $('hint-status').textContent="Indice accepté ✓"; });
+
+// NOUVEAU : si l’indice est refusé par le serveur
+socket.on('hintRejected', ({reason})=>{
+  $('hint-status').textContent = `Refusé : ${reason}`;
+  $('btn-send-hint').disabled=false;
+  $('hint-input').disabled=false;
+  $('hint-input').focus();
+});
 
 socket.on('allHints', ({hints, domain})=>{
   show('screen-vote');
@@ -219,14 +225,13 @@ socket.on('allHints', ({hints, domain})=>{
   });
 });
 
-socket.on('voteAck', ()=>{ /* option: toast('Vote reçu ✓'); */ });
+socket.on('voteAck', ()=>{ /* toast('Vote reçu ✓'); */ });
 
 socket.on('roundResult',(res)=>{
   show('screen-result');
   $('res-domain').textContent=res.domain || '?';
   $('res-common').textContent=res.common; $('res-imp').textContent=res.impostor; $('res-imp-name').textContent=res.impostorName||'(?)';
 
-  // GAGNÉ / PERDU personnel
   let text='', won=false;
   if (myIsImpostor) {
     won = !res.impostorCaught;
@@ -249,7 +254,6 @@ socket.on('roundResult',(res)=>{
   $('btn-next').style.display='block';
 });
 
-// Timer synchro + bip/flash finaux
 socket.on('timer', ({ phase, leftMs })=>{
   const left=Math.ceil(leftMs/1000);
   if (phase==='hints'){
@@ -267,13 +271,11 @@ socket.on('timer', ({ phase, leftMs })=>{
   }
 });
 
-// Progression X/Y
 socket.on('phaseProgress', ({ phase, submitted, total })=>{
   if (phase==='hints'){ const el=$('progress-hints'); if(el) el.textContent=`${submitted}/${total}`; }
   else if (phase==='voting'){ const el=$('progress-vote'); if(el) el.textContent=`${submitted}/${total}`; }
 });
 
-// Fin de partie (10 points)
 socket.on('gameOver', ({ winners })=>{
   const names = winners.map(w=>`${w.name} (${w.score})`).join(', ');
   $('winners-text').textContent = winners.length>1 ? `Égalité ! ${names}` : `${names} gagne la partie !`;
@@ -281,7 +283,6 @@ socket.on('gameOver', ({ winners })=>{
   show('screen-lobby');
 });
 
-// Scores remis à zéro (rejouer)
 socket.on('scoresReset', ()=>{ toast('Scores remis à 0'); show('screen-lobby'); });
 
 socket.on('actionAck', ({ action })=>{

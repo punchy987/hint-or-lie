@@ -1,4 +1,6 @@
-// server.js — domaines + anti-répétition + timers (indices/vote/révélation) + ACK + progression + auto-vote + win@10pts
+// server.js — domaines + anti-répétition + timers + ACK + progression + auto-vote + win@10pts
+// +++ NOUVEAU : filtre anti-révélation du mot (indices trop proches/interdits) +++
+
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -11,7 +13,7 @@ app.use(express.static('public'));
 // Durées (secondes)
 const HINT_SECONDS = 45;
 const VOTE_SECONDS  = 40;
-const REVEAL_SECONDS = 20; // nouvel écran résultat : 20s
+const REVEAL_SECONDS = 20; // écran résultat
 
 // État en mémoire
 // room: { hostId, state, round, players(Map), words, lastDomain, lastCommon, timer:{interval,deadline,phase} }
@@ -20,7 +22,7 @@ const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const genCode = () => Array.from({ length: 4 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
 
-// ----- Domaines (Tech retiré, Fruits renommé et enrichi) -----
+// ----- Domaines -----
 const DOMAINS = {
   "Fruits fleurs legumes": [
     'Mangue','Papaye','Ananas','Banane','Pomme','Poire','Raisin','Myrtille','Pasteque','Melon','Citron',
@@ -85,7 +87,74 @@ const DOMAINS = {
   ],
 };
 
-// Tirer 2 mots du même domaine (+ éviter le même domaine & même mot commun d’affilée)
+// ---------- Utilitaires anti-révélation du mot ----------
+const deburr = (s='') =>
+  s.normalize('NFD').replace(/[\u0300-\u036f]/g,''); // enlève accents
+
+const normalize = (s='') =>
+  deburr(String(s).toLowerCase())
+    .replace(/[^a-z0-9 ]+/g,' ')   // enlève ponctuation
+    .replace(/\s+/g,' ')           // espaces uniques
+    .trim();
+
+function levenshtein(a,b){
+  a = normalize(a); b = normalize(b);
+  const m = a.length, n = b.length;
+  if (!m) return n; if (!n) return m;
+  const dp = Array.from({length:m+1},()=>Array(n+1).fill(0));
+  for(let i=0;i<=m;i++) dp[i][0]=i;
+  for(let j=0;j<=n;j++) dp[0][j]=j;
+  for(let i=1;i<=m;i++){
+    for(let j=1;j<=n;j++){
+      dp[i][j] = Math.min(
+        dp[i-1][j]+1,
+        dp[i][j-1]+1,
+        dp[i-1][j-1] + (a[i-1]===b[j-1]?0:1)
+      );
+    }
+  }
+  return dp[m][n];
+}
+
+// Règles :
+// - indice non vide
+// - interdit si contient mot exact (avec ou sans accents/pluriels simples)
+// - interdit si distance de Levenshtein <=2 pour mots > 4 lettres
+// - interdit si mot est contenu dans l’indice sous forme de mot isolé
+function isHintAllowed(secretWord, hint, domain){
+  const h = normalize(hint);
+  const w = normalize(secretWord);
+  if (!h) return { ok:false, reason:"Indice vide." };
+
+  // exact / pluriels simples
+  const candidates = new Set([w, w+'s', w+'es']);
+  if (candidates.has(h)) return { ok:false, reason:"Indice trop évident (identique au mot)." };
+
+  // mot isolé dans la phrase (ex: 'petite pomme verte')
+  const words = new Set(h.split(' '));
+  if (words.has(w) || words.has(w+'s') || words.has(w+'es')){
+    return { ok:false, reason:"Tu as utilisé le mot lui-même." };
+  }
+
+  // sous-chaîne claire
+  if (h.includes(w) && w.length >= 4){
+    return { ok:false, reason:"Indice trop proche du mot." };
+  }
+
+  // distance d’édition
+  if (w.length >= 5 && levenshtein(w, h) <= 2){
+    return { ok:false, reason:"Indice presque identique au mot." };
+  }
+
+  // Interdire donner exactement le domaine
+  if (normalize(domain) === h){
+    return { ok:false, reason:"Ne mets pas le nom du domaine." };
+  }
+
+  return { ok:true };
+}
+
+// Tirer 2 mots du même domaine (+ éviter répétitions)
 function pickPairFromDomains(prevDomain = null, prevCommon = null) {
   const names = Object.keys(DOMAINS);
   const candidates = names.filter(n => n !== prevDomain);
@@ -170,10 +239,8 @@ function startRound(code){
     });
   }
 
-  // progression initiale (indices)
   io.to(code).emit('phaseProgress', { phase:'hints', submitted:0, total: ids.length });
 
-  // timer indices
   startPhaseTimer(code, HINT_SECONDS, 'hints', ()=>{
     const room = rooms.get(code); if(!room) return;
     for (const p of room.players.values()) if (typeof p.hint !== 'string') p.hint = '';
@@ -191,10 +258,8 @@ function maybeStartVoting(code){
   const hints = Array.from(r.players.entries()).map(([id,p])=>({id,name:p.name,hint:p.hint||''}));
   io.to(code).emit('allHints', { hints, domain: r.words?.domain || null });
 
-  // progression (vote)
   io.to(code).emit('phaseProgress', { phase:'voting', submitted:0, total: r.players.size });
 
-  // timer vote + auto-vote (pour soi) à l’expiration
   startPhaseTimer(code, VOTE_SECONDS, 'voting', ()=>{
     const room = rooms.get(code); if (!room) return;
     for (const [id,p] of room.players.entries()) if (!p.vote) p.vote = id;
@@ -218,7 +283,6 @@ function finishVoting(code){
   let top=null, max=-1; for(const [t,c] of Object.entries(tally)){ if(c>max){max=c; top=t;} }
   const caught = (top===impId);
 
-  // scoring simple (+1 équipiers si attrapé, +2 imposteur sinon)
   if(caught){ for(const p of r.players.values()) if(!p.isImpostor) p.score += 1; }
   else { const imp = r.players.get(impId); if(imp) imp.score += 2; }
 
@@ -232,7 +296,6 @@ function finishVoting(code){
   });
   broadcast(code);
 
-  // --- vérif win @ 10 points ---
   const playersArr = Array.from(r.players.values());
   const maxScore = Math.max(...playersArr.map(p => p.score));
 
@@ -243,12 +306,11 @@ function finishVoting(code){
     r.state = 'lobby';
     io.to(code).emit('gameOver', { winners });
     broadcast(code);
-    return; // ne pas lancer le timer reveal si la partie est terminée
+    return;
   }
 
-  // Pas de vainqueur : rester sur l'écran résultat 20s puis enchaîner
   startPhaseTimer(code, REVEAL_SECONDS, 'reveal', ()=>{
-    startRound(code); // auto "manche suivante" si l'hôte ne clique pas
+    startRound(code);
   });
 }
 
@@ -277,12 +339,26 @@ io.on('connection',(socket)=>{
     socket.emit('actionAck', { action:'startRound', status:'ok' });
   });
 
+  // --------- NOUVEAU : validation serveur des indices ----------
   socket.on('submitHint', ({hint})=>{
     const r = rooms.get(joined.code); if(!r || r.state!=='hints') return;
     const p = r.players.get(socket.id); if(!p) return;
     if (typeof p.hint === 'string') return; // anti double envoi
-    p.hint = String(hint||'').trim().slice(0,40);
 
+    const raw = String(hint||'').trim().slice(0,40);
+
+    // déterminer le mot du joueur (commun ou imposteur) + domaine
+    const mySecret = p.isImpostor ? r.words.impostor : r.words.common;
+    const check = isHintAllowed(mySecret, raw, r.words.domain);
+
+    if (!check.ok){
+      // on refuse : on informe seulement le joueur
+      socket.emit('hintRejected', { reason: check.reason });
+      return;
+    }
+
+    // OK
+    p.hint = raw;
     socket.emit('hintAck');
     const submitted = Array.from(r.players.values()).filter(x => typeof x.hint === 'string').length;
     io.to(joined.code).emit('phaseProgress', { phase:'hints', submitted, total: r.players.size });
