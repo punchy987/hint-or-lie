@@ -3,8 +3,10 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Hint or Lie (by Mits)</title>
+  <title>Hint or Lie</title>
   <script src="/socket.io/socket.io.js"></script>
+
+  <!-- ===== STYLES ===== -->
   <style>
     :root { color-scheme: dark; }
     body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#0b0f14;color:#e8eef6}
@@ -19,27 +21,27 @@
     .muted{color:#9fb0c5}
     h1,h2,h3,h4{margin:0 0 8px 0}
 
-    /* Rôle très visible (vert/rouge) */
+    /* Rôle (couleurs) */
     .role{font-weight:800;border:1px solid currentColor;border-radius:999px;padding:6px 12px;display:inline-block}
     .role.crew{color:#16a34a}
     .role.imp{color:#ef4444}
 
-    /* Section helpers */
+    /* Mots / sections */
     .section-title{font-size:18px;margin:6px 0}
     .hint-word{font-size:34px;font-weight:800;letter-spacing:.3px;margin:4px 0 8px}
 
-    /* Scoreboard */
+    /* Scoreboard bas */
     #scoreboard{max-width:720px;margin:16px auto 24px;background:#0f1520;border:1px solid #29384e;border-radius:12px;padding:12px}
     #scoreboard h4{margin:0 0 8px 0;font-size:14px}
     #scoreboard ul{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:1fr auto;row-gap:6px}
     #scoreboard li{display:contents}
     #scoreboard li span:last-child{justify-self:end;color:#9fb0c5}
 
-    /* Modal gagnant */
+    /* Modal fin de partie */
     #modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:20}
     #modal .box{background:#121823;border:1px solid #1e2a3a;border-radius:16px;padding:16px;max-width:360px}
 
-    /* Résultat personnel banner */
+    /* Résultat perso */
     .result-banner{border:1px solid; border-radius:10px; padding:8px 12px; display:inline-block; margin:6px 0}
     .result-win{color:#16a34a;border-color:#16a34a}
     .result-lose{color:#ef4444;border-color:#ef4444}
@@ -47,6 +49,7 @@
 </head>
 <body>
 
+<!-- ===== MODAL GAME OVER ===== -->
 <div id="modal">
   <div class="box">
     <h3>Vainqueur 🎉</h3>
@@ -59,16 +62,15 @@
 </div>
 
 <div class="wrap">
-  <!-- HOME -->
+  <!-- ===== HOME ===== -->
   <div class="card" id="screen-home">
-    <h2>Hint or Lie <small>(by Mits)</small></h2>
-    <p class="muted" style="margin:6px 0 12px">Donne un indice pour ton mot secret… un imposteur a un mot différent. Bluffe, vote, démasque. Le premier à 10 gagne !</p>
+    <h2>Hint or Lie</h2>
+    <p class="muted" style="margin:6px 0 12px">Un imposteur a un mot différent. Donne un indice, vote, démasque. Premier à 10 gagne.</p>
     <div class="row"><input id="name" placeholder="Ton pseudo" maxlength="16" /><button id="btn-create">Créer</button></div>
     <div class="row"><input id="join-code" placeholder="Code salle (ex: 4L8Q)" maxlength="6" /><button id="btn-join">Rejoindre</button></div>
-    <p class="muted">3–10 joueurs • 1 imposteur • Indices → Vote → Révélation</p>
   </div>
 
-  <!-- LOBBY -->
+  <!-- ===== LOBBY ===== -->
   <div class="card" id="screen-lobby" style="display:none">
     <div class="header-row">
       <div class="pill" id="host-badge" style="display:none">Tu es l'hôte</div>
@@ -76,11 +78,11 @@
       <div class="pill">Code <span id="lobby-code"></span></div>
     </div>
     <h3 class="section-title">Joueurs</h3>
-    <div id="players" class="list" style="margin-bottom:8px"></div>
+    <div id="players" class="list" style="display:grid;grid-template-columns:1fr auto;gap:8px;margin-bottom:8px"></div>
     <div class="row" id="host-actions" style="display:none"><button id="btn-start">Démarrer la manche</button></div>
   </div>
 
-  <!-- HINT -->
+  <!-- ===== HINT ===== -->
   <div class="card" id="screen-hint" style="display:none">
     <div class="header-row">
       <div class="pill" id="domain-pill">Domaine</div>
@@ -96,7 +98,7 @@
     <p class="muted" id="hint-status"></p>
   </div>
 
-  <!-- VOTE -->
+  <!-- ===== VOTE ===== -->
   <div class="card" id="screen-vote" style="display:none">
     <div class="header-row">
       <div class="pill" id="vote-domain-pill">Domaine</div>
@@ -109,9 +111,10 @@
     <div id="vote-buttons" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;"></div>
   </div>
 
-  <!-- RESULT -->
+  <!-- ===== RESULT ===== -->
   <div class="card" id="screen-result" style="display:none">
     <div class="header-row">
+      <div class="pill" id="progress-ready">0/0 prêts</div>
       <div class="pill" id="timer-reveal">00:20</div>
     </div>
     <div id="personal-banner" class="result-banner">Résultat</div>
@@ -124,7 +127,7 @@
   </div>
 </div>
 
-<!-- SCOREBOARD -->
+<!-- ===== SCOREBOARD ===== -->
 <div id="scoreboard">
   <h4>Scores</h4>
   <ul id="score-list"></ul>
@@ -132,6 +135,7 @@
 
 <p class="muted" id="toast" style="display:none;text-align:center"></p>
 
+<!-- ===== SCRIPT CLIENT ===== -->
 <script>
 const $=id=>document.getElementById(id);
 const socket=io();
@@ -139,6 +143,7 @@ let me={id:null,code:null};
 let room={players:[],state:'lobby'};
 let myIsImpostor=false;
 
+// -- helpers UI
 function show(id){ for(const el of document.querySelectorAll('.card')) el.style.display='none'; $(id).style.display='block'; }
 function toast(msg){ const t=$('toast'); t.textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',2200); }
 function fmt(ms){ const s=Math.ceil(ms/1000); const m=Math.floor(s/60); const r=s%60; return `${String(m).padStart(2,'0')}:${String(r).padStart(2,'0')}`; }
@@ -155,11 +160,15 @@ function updateScoreboard(players){
   });
 }
 
-/* Home / Lobby */
+// ===== HOME / LOBBY =====
 $('btn-create').onclick=()=>{const name=$('name').value.trim()||'Joueur'; socket.emit('createRoom',{name});};
 $('btn-join').onclick=()=>{const name=$('name').value.trim()||'Joueur'; const code=$('join-code').value.trim().toUpperCase(); socket.emit('joinRoom',{code,name});};
 $('btn-start').onclick=()=>socket.emit('startRound');
-$('btn-next').onclick=()=>socket.emit('nextRound');
+$('btn-next').onclick=()=>{
+  $('btn-next').disabled = true;
+  $('btn-next').textContent = 'Prêt ✓';
+  socket.emit('playerReadyNext');
+};
 $('btn-modal-lobby').onclick=()=>{ show('screen-lobby'); $('modal').style.display='none'; };
 $('btn-modal-replay').onclick=()=>{ socket.emit('resetScores'); $('modal').style.display='none'; };
 
@@ -187,11 +196,13 @@ socket.on('roomUpdate',(snap)=>{
   updateScoreboard(snap.players);
 });
 
-/* Hints */
+// ===== PHASE INDICES =====
 socket.on('roundInfo',({word,isImpostor,domain})=>{
   myIsImpostor = !!isImpostor;
   show('screen-hint');
+
   $('domain-pill').textContent=`Domaine : ${domain||'?'}`;
+
   const roleEl=$('my-role');
   roleEl.textContent=isImpostor?'Tu es IMPOSTEUR':'Tu es Équipier';
   roleEl.className = 'role ' + (isImpostor?'imp':'crew');
@@ -199,8 +210,10 @@ socket.on('roundInfo',({word,isImpostor,domain})=>{
   $('hint-instruction').textContent = isImpostor
     ? "Donne 1 mot qui pourrait coller au thème."
     : "Donne 1 mot lié au thème sans le révéler.";
+
   $('my-word').textContent=word;
 
+  // reset UI
   $('hint-input').value=''; $('hint-input').disabled=false; $('btn-send-hint').disabled=false; $('hint-status').textContent='';
   $('timer-vote').textContent='00:40';
   $('progress-hints').textContent='0/0';
@@ -216,10 +229,11 @@ socket.on('hintRejected', ({reason})=>{
   $('hint-input').focus();
 });
 
-/* Voting */
+// ===== PHASE VOTE =====
 socket.on('allHints', ({hints, domain})=>{
   show('screen-vote');
   $('vote-domain-pill').textContent=`Domaine : ${domain||'?'}`;
+
   const box=$('hints'); box.innerHTML='';
   hints.forEach(h=>{ const p=document.createElement('p'); p.innerHTML=`<strong>${h.name}</strong> : ${h.hint||''}`; box.appendChild(p); });
 
@@ -238,11 +252,14 @@ socket.on('allHints', ({hints, domain})=>{
 });
 socket.on('voteAck', ()=>{ /* ok */ });
 
-/* Results */
+// ===== PHASE RÉSULTAT =====
 socket.on('roundResult',(res)=>{
   show('screen-result');
+
   $('res-domain').textContent=res.domain || '?';
-  $('res-common').textContent=res.common; $('res-imp').textContent=res.impostor; $('res-imp-name').textContent=res.impostorName||'(?)';
+  $('res-common').textContent=res.common;
+  $('res-imp').textContent=res.impostor;
+  $('res-imp-name').textContent=res.impostorName||'(?)';
 
   let text='', win=false;
   if (myIsImpostor) { win = !res.impostorCaught; text = win ? 'GAGNÉ ✅ Tu es resté discret.' : 'PERDU ❌ Tu as été repéré.'; }
@@ -251,39 +268,71 @@ socket.on('roundResult',(res)=>{
   banner.textContent=text;
   banner.className = 'result-banner ' + (win?'result-win':'result-lose');
 
-  const box=$('res-votes'); box.innerHTML=''; const ul=document.createElement('ul');
+  const box=$('res-votes'); box.innerHTML='';
+  const ul=document.createElement('ul');
   for(const [tid,c] of Object.entries(res.votes)){
     const name=(room.players.find(p=>p.id===tid)||{}).name||tid;
     const li=document.createElement('li'); li.textContent=`${name} : ${c} vote(s)`; ul.appendChild(li);
   }
   box.appendChild(ul);
 
+  // Affiche bouton "Manche suivante" pour tous
   $('btn-next').style.display='block';
+  $('btn-next').disabled = false;
+  $('btn-next').textContent = 'Manche suivante';
+
+  // Compteur prêts 0/x (mis à jour par 'readyProgress')
+  const totalPlayers = (room.players||[]).length || 0;
+  const pr = $('progress-ready'); if (pr) pr.textContent = `0/${totalPlayers} prêts`;
+
+  // On efface le timer visuel jusqu'au mini décompte 3s
+  const tr = $('timer-reveal'); if (tr) tr.textContent = '--:--';
 });
 
-/* Timers + Progress */
-socket.on('timer', ({ phase, leftMs })=>{
-  const left=Math.ceil(leftMs/1000);
-  if (phase==='hints'){
-    const el=$('timer-hints'); if (el) el.textContent=fmt(leftMs);
-    if (left>0 && left<=5){ flash('timer-hints'); beep(); }
-    if (left<=0){ $('btn-send-hint')?.setAttribute('disabled','true'); $('hint-input')?.setAttribute('disabled','true'); }
-  } else if (phase==='voting'){
-    const el=$('timer-vote'); if (el) el.textContent=fmt(leftMs);
-    if (left>0 && left<=5){ flash('timer-vote'); beep(); }
-    if (left<=0){ Array.from(($('vote-buttons')||document.createElement('div')).querySelectorAll('button')).forEach(b=>b.disabled=true); }
-  } else if (phase==='reveal'){
-    const el=$('timer-reveal'); if (el) el.textContent=fmt(leftMs);
-    if (left>0 && left<=5){ flash('timer-reveal'); beep(); }
-    if (left<=0){ $('btn-next')?.setAttribute('disabled','true'); }
+// Avancement des "prêts" (x/y)
+socket.on('readyProgress', ({ ready, total })=>{
+  const pr = $('progress-ready'); if (pr) pr.textContent = `${ready}/${total} prêts`;
+});
+
+// Avancement des phases (indices / vote)
+socket.on('phaseProgress', ({ phase, submitted, total })=>{
+  if (phase === 'hints') {
+    const el = $('progress-hints');
+    if (el) el.textContent = `${submitted}/${total}`;
+  } else if (phase === 'voting') {
+    const el = $('progress-vote');
+    if (el) el.textContent = `${submitted}/${total}`;
   }
 });
-socket.on('phaseProgress', ({ phase, submitted, total })=>{
-  if (phase==='hints'){ const el=$('progress-hints'); if(el) el.textContent=`${submitted}/${total}`; }
-  else if (phase==='voting'){ const el=$('progress-vote'); if(el) el.textContent=`${submitted}/${total}`; }
+
+// ===== TIMERS / PROGRESSION =====
+socket.on('timer', ({ phase, leftMs })=>{
+  const left = Math.ceil(leftMs/1000);
+
+  if (phase === 'hints') {
+    const el = $('timer-hints'); if (el) el.textContent = fmt(leftMs);
+    if (left > 0 && left <= 5) { flash('timer-hints'); beep(); }
+    if (left <= 0) { $('btn-send-hint')?.setAttribute('disabled','true'); $('hint-input')?.setAttribute('disabled','true'); }
+
+  } else if (phase === 'voting') {
+    const el = $('timer-vote'); if (el) el.textContent = fmt(leftMs);
+    if (left > 0 && left <= 5) { flash('timer-vote'); beep(); }
+    if (left <= 0) { const cont = $('vote-buttons') || document.createElement('div'); Array.from(cont.querySelectorAll('button')).forEach(b => b.disabled = true); }
+
+  } else if (phase === 'reveal') {
+    const el = $('timer-reveal'); if (el) el.textContent = fmt(leftMs);
+    if (left > 0 && left <= 5) { flash('timer-reveal'); beep(); }
+    if (left <= 0) { $('btn-next')?.setAttribute('disabled','true'); }
+
+  } else if (phase === 'preround') {
+    // Mini décompte 3s avant la nouvelle manche (quand TOUT LE MONDE est prêt)
+    const el = $('timer-reveal'); if (el) el.textContent = fmt(leftMs);
+    if (left > 0 && left <= 3) { flash('timer-reveal'); beep(); }
+    // rien à faire à 0 -> le serveur lance startRound()
+  }
 });
 
-/* Game over & misc */
+// ===== GAME OVER & DIVERS =====
 socket.on('gameOver', ({ winners })=>{
   const names = winners.map(w=>`${w.name} (${w.score})`).join(', ');
   $('winners-text').textContent = winners.length>1 ? `Égalité ! ${names}` : `${names} gagne la partie !`;
