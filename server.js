@@ -4,29 +4,22 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
+const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
 // === Statique ===
-// Si ton index.html est à côté de server.js, prends '.'
-// Si tu as un dossier /public, remets 'public'
-const path = require('path');
-// Sert tout le contenu du dossier /public (HTML/CSS/JS)
-app.use(express.static(path.join(__dirname, 'public')));
-// Route racine -> renvoie /public/index.html
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+// On sert le dossier courant pour simplifier le déploiement (index.html à côté de server.js)
+app.use(express.static(__dirname));
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 
 // ===== CONFIG — DURÉES (secondes) =====
-const HINT_SECONDS   = 45; // phase "indices"
-const VOTE_SECONDS   = 40; // phase "vote"
-// NOTE: pas d'auto-timer pour la phase "reveal" (on laisse les joueurs cliquer)
+const HINT_SECONDS = 45; // phase "indices"
+const VOTE_SECONDS = 40; // phase "vote"
 
 // ===== ÉTAT =====
-// rooms: Map<code, { hostId, state, round, players(Map), words, lastDomain, lastCommon, timer, readyNext(Set) }>
 const rooms = new Map();
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -83,31 +76,74 @@ function levenshtein(a,b){
 
 // ===== Validation d'indice (anti-révélation) =====
 function isHintAllowed(secretWord, hint, domain){
-  const h = normalize(hint); const w = normalize(secretWord);
+  const h = normalize(hint);
+  const w = normalize(secretWord);
   if (!h) return { ok:false, reason:"Indice vide." };
-  const plurals = new Set([w, w+'s', w+'es']); if (plurals.has(h)) return { ok:false, reason:"Indice identique au mot." };
-  const words = new Set(h.split(' ')); if (words.has(w) || words.has(w+'s') || words.has(w+'es')) return { ok:false, reason:"Tu as utilisé le mot lui-même." };
+
+  const plurals = new Set([w, w+'s', w+'es']);
+  if (plurals.has(h)) return { ok:false, reason:"Indice identique au mot." };
+
+  const wordsInHint = new Set(h.split(' '));
+  if (wordsInHint.has(w) || wordsInHint.has(w+'s') || wordsInHint.has(w+'es'))
+    return { ok:false, reason:"Tu as utilisé le mot lui-même." };
+
   if (h.includes(w) && w.length>=4) return { ok:false, reason:"Indice trop proche du mot." };
   if (w.length>=5 && levenshtein(w,h) <= 2) return { ok:false, reason:"Indice presque identique." };
-  if (normalize(domain) === h) return { ok:false, reason:"Ne mets pas le nom du domaine." };
+
+  // Interdiction des mots du thème
+  const dom = normalize(domain||'');
+  const domTokens = dom.split(' ').filter(Boolean);
+  const banned = new Set();
+  for (const t of domTokens){
+    banned.add(t);
+    if (t.endsWith('es')) banned.add(t.slice(0,-2));
+    if (t.endsWith('s'))  banned.add(t.slice(0,-1));
+  }
+  if (banned.has(h)) return { ok:false, reason:"N’utilise pas le nom du thème." };
+  for (const token of wordsInHint){
+    if (banned.has(token)) return { ok:false, reason:"Indice trop proche du thème." };
+  }
   return { ok:true };
 }
 
-// ===== Tirage des mots =====
-function pickPairFromDomains(prevDomain=null, prevCommon=null){
+// Tirage "anti-répétitions" par salle
+function pickPairFromDomainsUnique(room){
+  if (!room.used) room.used = {};
   const names = Object.keys(DOMAINS);
-  const candidates = names.filter(n => n !== prevDomain);
+  const candidates = names.filter(n => n !== room.lastDomain);
   const domain = (candidates.length ? pick(candidates) : pick(names));
   const pool = DOMAINS[domain] || [];
   if (pool.length < 2) return { common:'Erreur', impostor:'Erreur', domain };
+  if (!room.used[domain]) room.used[domain] = new Set();
+  let usedSet = room.used[domain];
 
-  let common = pick(pool); let guard = 0; while (common === prevCommon && guard++ < 10) common = pick(pool);
-  let impostor = pick(pool); guard = 0; while (impostor === common && guard++ < 10) impostor = pick(pool);
+  let available = pool.filter(w => !usedSet.has(w));
+  if (available.length < 2){
+    room.used[domain] = new Set();
+    usedSet = room.used[domain];
+    available = pool.slice();
+  }
+
+  let common = pick(available);
+  if (available.length > 1){
+    let guard = 0;
+    while (common === room.lastCommon && guard++ < 10) common = pick(available);
+  }
+  available = available.filter(w => w !== common);
+  const impostor = pick(available);
+
+  usedSet.add(common);
+  usedSet.add(impostor);
+
   return { common, impostor, domain };
 }
 
 // ===== TIMERS synchronisés =====
-function clearRoomTimer(room){ if (room?.timer?.interval) clearInterval(room.timer.interval); if (room) room.timer = { interval:null, deadline:0, phase:null }; }
+function clearRoomTimer(room){
+  if (room?.timer?.interval) clearInterval(room.timer.interval);
+  if (room) room.timer = { interval:null, deadline:0, phase:null };
+}
+
 function startPhaseTimer(code, seconds, phase, onExpire){
   const room = rooms.get(code); if(!room) return;
   clearRoomTimer(room);
@@ -127,7 +163,8 @@ function createRoom(hostId, hostName){
     hostId, state:'lobby', round:0, words:null,
     players:new Map(), lastDomain:null, lastCommon:null,
     timer:{ interval:null, deadline:0, phase:null },
-    readyNext: new Set() // <— joueurs qui ont cliqué "Manche suivante"
+    readyNext: new Set(),
+    used: {}
   };
   r.players.set(hostId, { name:hostName, hint:null, vote:null, isImpostor:false, score:0 });
   rooms.set(code, r);
@@ -144,7 +181,7 @@ function broadcast(code){ const s = snapshot(code); if (s) io.to(code).emit('roo
 function startRound(code){
   const r = rooms.get(code); if(!r) return;
   clearRoomTimer(r);
-  r.readyNext = new Set(); // reset des "prêts" à chaque nouvelle manche
+  r.readyNext = new Set(); // reset des "prêts"
 
   const ids = Array.from(r.players.keys());
   if (ids.length < 3){ io.to(code).emit('errorMsg','Minimum 3 joueurs'); return; }
@@ -152,7 +189,7 @@ function startRound(code){
   // reset manche
   for (const p of r.players.values()){ p.hint=null; p.vote=null; p.isImpostor=false; }
 
-  const pair = pickPairFromDomains(r.lastDomain, r.lastCommon);
+  const pair = pickPairFromDomainsUnique(r);
   r.lastDomain = pair.domain; r.lastCommon = pair.common;
 
   const impId = pick(ids);
@@ -189,7 +226,7 @@ function maybeStartVoting(code){
   const hints = Array.from(r.players.entries()).map(([id,p])=>({id,name:p.name,hint:p.hint||''}));
   io.to(code).emit('allHints', { hints, domain:r.words?.domain || null });
 
-  io.to(code).emit('phaseProgress', { phase:'voting', submitted:0, total:r.players.size });
+  io.to(code).emit('phaseProgress', { phase:'voting', submitted:0, total: r.players.size });
 
   startPhaseTimer(code, VOTE_SECONDS, 'voting', ()=>{
     const room = rooms.get(code); if (!room) return;
@@ -212,7 +249,6 @@ function finishVoting(code){
   let impId = null;
   for (const [id,p] of r.players.entries()) { if (p.isImpostor) impId = id; }
 
-  // comptage des votes
   const tally = {};
   for (const p of r.players.values()) { tally[p.vote] = (tally[p.vote] || 0) + 1; }
 
@@ -239,21 +275,23 @@ function finishVoting(code){
     domain: r.words.domain
   });
 
-  // === ICI : compteur "prêts" (0/x) et pas d'auto-restart ===
+  // Réinitialise le compteur de "prêts"
   r.readyNext = new Set();
   io.to(code).emit('readyProgress', { ready: 0, total: r.players.size });
 
   broadcast(code);
 
-  // Victoire à 10 (on reste dans finishVoting)
+  // Victoire @10
   const arr = Array.from(r.players.values());
   const maxScore = Math.max(...arr.map(p => p.score));
   if (maxScore >= 10){
     const winners = Array.from(r.players.entries())
       .filter(([_,p]) => p.score === maxScore)
       .map(([id,p]) => ({ id, name:p.name, score:p.score }));
-    r.state='lobby';
-    io.to(code).emit('gameOver', { winners });
+    for (const p of r.players.values()) p.score = 0;
+    r.round = 0;
+    r.state = 'lobby';
+    io.to(code).emit('gameOver', { winners, autoReset: true });
     broadcast(code);
     return;
   }
@@ -261,22 +299,11 @@ function finishVoting(code){
 
 // ===== SOCKETS =====
 io.on('connection',(socket)=>{
+  console.log('[server] client connected', socket.id);
+
   let joined = { code:null };
 
-  // Tous les joueurs peuvent cliquer "Manche suivante" depuis l'écran résultat
-  socket.on('playerReadyNext', ()=>{
-    const r = rooms.get(joined.code); if(!r) return;
-    if (r.state !== 'reveal') return; // on ne valide que depuis l'écran résultat
-
-    r.readyNext.add(socket.id);
-    io.to(joined.code).emit('readyProgress', { ready: r.readyNext.size, total: r.players.size });
-
-    // Quand tout le monde est prêt -> mini décompte 3s -> startRound
-    if (r.readyNext.size === r.players.size) {
-      startPhaseTimer(joined.code, 3, 'preround', ()=> startRound(joined.code));
-    }
-  });
-
+  // ——— CRÉER / REJOINDRE ———
   socket.on('createRoom', ({name})=>{
     const code = createRoom(socket.id, String(name||'Joueur').slice(0,16));
     socket.join(code); joined.code=code;
@@ -291,6 +318,7 @@ io.on('connection',(socket)=>{
     socket.emit('roomJoined',{code}); broadcast(code);
   });
 
+  // ——— DÉMARRER LA MANCHE ———
   socket.on('startRound', ()=>{
     const r = rooms.get(joined.code); if(!r) return;
     if (r.hostId !== socket.id) return socket.emit('errorMsg',"Seul l'hôte peut démarrer");
@@ -298,6 +326,7 @@ io.on('connection',(socket)=>{
     socket.emit('actionAck', { action:'startRound', status:'ok' });
   });
 
+  // ——— INDICE ———
   socket.on('submitHint', ({hint})=>{
     const r = rooms.get(joined.code); if(!r || r.state!=='hints') return;
     const p = r.players.get(socket.id); if(!p) return;
@@ -317,6 +346,7 @@ io.on('connection',(socket)=>{
     broadcast(joined.code);
   });
 
+  // ——— VOTE ———
   socket.on('submitVote', ({targetId})=>{
     const r = rooms.get(joined.code); if(!r || r.state!=='voting') return;
     if(!r.players.has(targetId)) return;
@@ -332,16 +362,22 @@ io.on('connection',(socket)=>{
     broadcast(joined.code);
   });
 
-  socket.on('resetScores', ()=>{
+  // ——— MANCHES SUIVANTES ———
+  socket.on('playerReadyNext', ()=>{
     const r = rooms.get(joined.code); if(!r) return;
-    if (r.hostId !== socket.id) return socket.emit('errorMsg',"Seul l'hôte peut réinitialiser");
-    for (const p of r.players.values()) p.score = 0;
-    r.round = 0; r.state = 'lobby';
-    io.to(joined.code).emit('scoresReset');
-    broadcast(joined.code);
+    if (r.state !== 'reveal') return; // uniquement depuis l’écran résultat
+
+    r.readyNext.add(socket.id);
+    io.to(joined.code).emit('readyProgress', { ready: r.readyNext.size, total: r.players.size });
+
+    // Quand tout le monde est prêt -> mini décompte 3s -> startRound
+    if (r.readyNext.size === r.players.size) {
+      // Aligne le nom de phase avec le client: "prestart"
+      startPhaseTimer(joined.code, 3, 'prestart', ()=> startRound(joined.code));
+    }
   });
 
-  // (Garde ce handler si tu veux que l'hôte puisse forcer la manche suivante)
+  // (Option hôte) forcer la manche suivante
   socket.on('nextRound', ()=>{
     const r = rooms.get(joined.code); if(!r) return;
     if (r.hostId !== socket.id) return;
@@ -349,12 +385,23 @@ io.on('connection',(socket)=>{
     socket.emit('actionAck', { action:'nextRound', status:'ok' });
   });
 
+  // ——— RESET SCORES ———
+  socket.on('resetScores', ()=>{
+    const r = rooms.get(joined.code); if(!r) return;
+    if (r.hostId !== socket.id) return socket.emit('errorMsg',"Seul l'hôte peut réinitialiser");
+    for (const p of r.players.values()) p.score = 0;
+    r.round = 0; r.state = 'lobby';
+    r.used = {};
+    io.to(joined.code).emit('scoresReset');
+    broadcast(joined.code);
+  });
+
+  // ——— DÉCONNEXION ———
   socket.on('disconnect',()=>{
     const code = joined.code; if(!code) return;
     const r = rooms.get(code); if(!r) return;
     r.players.delete(socket.id);
 
-    // Si le joueur était déjà "prêt", on l'enlève du Set et on met à jour le compteur
     if (r.readyNext?.has(socket.id)){
       r.readyNext.delete(socket.id);
       io.to(code).emit('readyProgress', { ready: r.readyNext.size, total: r.players.size });
