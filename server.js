@@ -11,13 +11,13 @@ const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
 // === Statique ===
-// On sert le dossier courant pour simplifier le déploiement (index.html à côté de server.js)
 app.use(express.static(__dirname));
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 
 // ===== CONFIG — DURÉES (secondes) =====
-const HINT_SECONDS = 45; // phase "indices"
-const VOTE_SECONDS = 40; // phase "vote"
+const HINT_SECONDS = 45;   // phase "indices"
+const VOTE_SECONDS = 40;   // phase "vote"
+const LOBBY_READY_SECONDS = 10; // décompte quand tout le monde est prêt dans le salon
 
 // ===== ÉTAT =====
 const rooms = new Map();
@@ -62,7 +62,7 @@ const DOMAINS = {
   Marques: [ 'Apple','Samsung','Xiaomi','Sony','Dell','HP','JBL','Lenovo','BMW','Mercedes','Audi','Tesla','Toyota','Honda','Peugeot','Renault','Ford','Ferrari','Lamborghini','Adidas','Nike','Puma','Reebok','Lacoste','Coca-Cola','Pepsi','Nestle','Red Bull','Starbucks','Nutella','McDonalds','Burger King','KFC' ],
 };
 
-// ===== UTILS — normalisation + distance =====
+// ===== UTILS =====
 const deburr = (s='') => s.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
 const normalize = (s='') => deburr(String(s).toLowerCase()).replace(/[^a-z0-9 ]+/g,' ').replace(/\s+/g,' ').trim();
 function levenshtein(a,b){
@@ -70,7 +70,7 @@ function levenshtein(a,b){
   const m=a.length, n=b.length; if(!m) return n; if(!n) return m;
   const dp = Array.from({length:m+1},()=>Array(n+1).fill(0));
   for(let i=0;i<=m;i++) dp[i][0]=i; for(let j=0;j<=n;j++) dp[0][j]=j;
-  for(let i=1;i<=m;i++) for(let j=1;j<=n;j++) dp[i][j]=Math.min(dp[i-1][j]+1, dp[i][j-1]+1, dp[i-1][j-1]+(a[i-1]===b[j-1]?0:1));
+  for(let i=1;i<=m;i++) for(let j=1;j<=n;j++) dp[i][j]=Math.min(dp[i-1][j]+1, dp[i][j-1]+1, dp[i-1][j-1]+(a[i-1]===b[i-1]?0:1));
   return dp[m][n];
 }
 
@@ -163,7 +163,8 @@ function createRoom(hostId, hostName){
     hostId, state:'lobby', round:0, words:null,
     players:new Map(), lastDomain:null, lastCommon:null,
     timer:{ interval:null, deadline:0, phase:null },
-    readyNext: new Set(),
+    // Nouveau: gestion "prêt" dans le salon
+    lobbyReady: new Set(),
     used: {}
   };
   r.players.set(hostId, { name:hostName, hint:null, vote:null, isImpostor:false, score:0 });
@@ -181,10 +182,10 @@ function broadcast(code){ const s = snapshot(code); if (s) io.to(code).emit('roo
 function startRound(code){
   const r = rooms.get(code); if(!r) return;
   clearRoomTimer(r);
-  r.readyNext = new Set(); // reset des "prêts"
-
+  r.lobbyReady = new Set();        // reset des prêts du salon
+  r.readyNext = new Set();         // reset des prêts entre manches
   const ids = Array.from(r.players.keys());
-  if (ids.length < 3){ io.to(code).emit('errorMsg','Minimum 3 joueurs'); return; }
+  if (ids.length < 3){ io.to(code).emit('errorMsg','Minimum 3 joueurs'); r.state='lobby'; broadcast(code); return; }
 
   // reset manche
   for (const p of r.players.values()){ p.hint=null; p.vote=null; p.isImpostor=false; }
@@ -275,7 +276,7 @@ function finishVoting(code){
     domain: r.words.domain
   });
 
-  // Réinitialise le compteur de "prêts"
+  // Réinitialise le compteur de "prêts" inter-manches
   r.readyNext = new Set();
   io.to(code).emit('readyProgress', { ready: 0, total: r.players.size });
 
@@ -315,15 +316,50 @@ io.on('connection',(socket)=>{
     const r = rooms.get(code); if(!r) return socket.emit('errorMsg','Salle introuvable');
     socket.join(code); joined.code=code;
     r.players.set(socket.id, { name:String(name||'Joueur').slice(0,16), hint:null, vote:null, isImpostor:false, score:0 });
+
+    // Si on est dans le salon et qu'un joueur rejoint pendant un décompte de "tous prêts" => on annule
+    if (r.state === 'lobby' && r.timer?.phase === 'lobby') {
+      clearRoomTimer(r);
+      r.lobbyReady = new Set();
+      io.to(code).emit('lobbyCountdownCancelled');
+      io.to(code).emit('lobbyReadyProgress', { ready: 0, total: r.players.size });
+    }
+
     socket.emit('roomJoined',{code}); broadcast(code);
   });
 
-  // ——— DÉMARRER LA MANCHE ———
+  // ——— DÉMARRER LA MANCHE (garde: uniquement utilisé après le décompte) ———
   socket.on('startRound', ()=>{
     const r = rooms.get(joined.code); if(!r) return;
     if (r.hostId !== socket.id) return socket.emit('errorMsg',"Seul l'hôte peut démarrer");
+    // On autorise encore ce bouton si tu veux le garder, mais le flow normal passe par "tous prêts".
     startRound(joined.code);
     socket.emit('actionAck', { action:'startRound', status:'ok' });
+  });
+
+  // ——— PRÊT DANS LE SALON (nouveau) ———
+  socket.on('playerReadyLobby', ({ ready })=>{
+    const r = rooms.get(joined.code); if(!r) return;
+    if (r.state !== 'lobby') return; // seulement au salon
+
+    if (ready) r.lobbyReady.add(socket.id);
+    else r.lobbyReady.delete(socket.id);
+
+    io.to(joined.code).emit('lobbyReadyProgress', { ready: r.lobbyReady.size, total: r.players.size });
+
+    // Si tout le monde est prêt ET au moins 3 joueurs, on lance un décompte de 10s
+    if (r.lobbyReady.size === r.players.size && r.players.size >= 3) {
+      // Sécurité: si déjà un timer lobby tourne, on le reset
+      clearRoomTimer(r);
+      startPhaseTimer(joined.code, LOBBY_READY_SECONDS, 'lobby', ()=> startRound(joined.code));
+      io.to(joined.code).emit('lobbyCountdownStarted', { seconds: LOBBY_READY_SECONDS });
+    } else {
+      // Si quelqu'un s'est "dé-prêté" et qu'un décompte lobby était en cours, on annule
+      if (r.timer?.phase === 'lobby') {
+        clearRoomTimer(r);
+        io.to(joined.code).emit('lobbyCountdownCancelled');
+      }
+    }
   });
 
   // ——— INDICE ———
@@ -362,17 +398,16 @@ io.on('connection',(socket)=>{
     broadcast(joined.code);
   });
 
-  // ——— MANCHES SUIVANTES ———
+  // ——— MANCHES SUIVANTES (prêt inter-manches existant) ———
   socket.on('playerReadyNext', ()=>{
     const r = rooms.get(joined.code); if(!r) return;
-    if (r.state !== 'reveal') return; // uniquement depuis l’écran résultat
+    if (r.state !== 'reveal') return;
 
+    if (!r.readyNext) r.readyNext = new Set();
     r.readyNext.add(socket.id);
     io.to(joined.code).emit('readyProgress', { ready: r.readyNext.size, total: r.players.size });
 
-    // Quand tout le monde est prêt -> mini décompte 3s -> startRound
     if (r.readyNext.size === r.players.size) {
-      // Aligne le nom de phase avec le client: "prestart"
       startPhaseTimer(joined.code, 3, 'prestart', ()=> startRound(joined.code));
     }
   });
@@ -392,6 +427,9 @@ io.on('connection',(socket)=>{
     for (const p of r.players.values()) p.score = 0;
     r.round = 0; r.state = 'lobby';
     r.used = {};
+    r.lobbyReady = new Set();
+    clearRoomTimer(r);
+    io.to(joined.code).emit('lobbyCountdownCancelled');
     io.to(joined.code).emit('scoresReset');
     broadcast(joined.code);
   });
@@ -400,8 +438,16 @@ io.on('connection',(socket)=>{
   socket.on('disconnect',()=>{
     const code = joined.code; if(!code) return;
     const r = rooms.get(code); if(!r) return;
+    // retirer du salon et des "ready"
     r.players.delete(socket.id);
-
+    if (r.lobbyReady?.has(socket.id)) {
+      r.lobbyReady.delete(socket.id);
+      io.to(code).emit('lobbyReadyProgress', { ready: r.lobbyReady.size, total: r.players.size });
+      if (r.timer?.phase === 'lobby') {
+        clearRoomTimer(r);
+        io.to(code).emit('lobbyCountdownCancelled');
+      }
+    }
     if (r.readyNext?.has(socket.id)){
       r.readyNext.delete(socket.id);
       io.to(code).emit('readyProgress', { ready: r.readyNext.size, total: r.players.size });

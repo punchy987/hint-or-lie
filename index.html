@@ -34,6 +34,11 @@
     .result-banner{border:1px solid; border-radius:10px; padding:8px 12px; display:inline-block; margin:6px 0}
     .result-win{color:#16a34a;border-color:#16a34a}
     .result-lose{color:#ef4444;border-color:#ef4444}
+
+    /* Mini styles pour le bloc RÈGLES du salon */
+    .rules{margin-top:10px;border:1px dashed #1e2a3a;border-radius:12px;padding:12px;background:#0f1520}
+    .rules h4{margin:0 0 8px 0}
+    .rules ul{margin:6px 0;padding-left:18px}
   </style>
 </head>
 <body>
@@ -70,10 +75,29 @@
       <div class="pill" id="host-badge" style="display:none">Tu es l'hôte</div>
       <div class="pill">Manche <span id="round-num">0</span></div>
       <div class="pill">Code <span id="lobby-code"></span></div>
+      <div class="pill" id="lobby-ready-pill">0/0 prêts</div>
+      <div class="pill" id="timer-lobby" style="display:none">00:10</div>
     </div>
+
     <h3 class="section-title">Joueurs</h3>
     <div id="players" class="list" style="display:grid;grid-template-columns:1fr auto;gap:8px;margin-bottom:8px"></div>
-    <div class="row" id="host-actions" style="display:none"><button id="btn-start">Démarrer la manche</button></div>
+
+    <!-- Boutons salon -->
+    <div class="row" id="lobby-actions">
+      <button id="btn-ready">Je suis prêt</button>
+    </div>
+
+    <!-- RÈGLES visibles au salon -->
+    <div class="rules">
+      <h4>Règles — Hint or Lie</h4>
+      <ul>
+        <li>La plupart ont le <strong>même mot</strong>, un joueur a un <strong>mot différent</strong> (imposteur).</li>
+        <li><strong>Indice :</strong> chacun donne 1 mot lié au thème, sans révéler le mot.</li>
+        <li><strong>Vote :</strong> on choisit le suspect. Révélation &amp; points.</li>
+        <li><strong>Victoire :</strong> premier à <strong>10 points</strong>.</li>
+      </ul>
+      <p class="muted">Quand tout le monde clique <em>Je suis prêt</em>, un compte à rebours de 10s démarre. Si quelqu’un rejoint : le décompte est annulé et on recommence.</p>
+    </div>
   </div>
 
   <!-- HINT -->
@@ -136,6 +160,7 @@
   let me = { id: null, code: null };
   let room = { players: [], state: 'lobby' };
   let myIsImpostor = false;
+  let myLobbyReady = false; // état local: suis-je prêt au salon ?
 
   // Helpers UI
   function show(id){ for(const el of document.querySelectorAll('.card')) el.style.display='none'; $(id).style.display='block'; }
@@ -156,9 +181,15 @@
   // HOME / LOBBY
   $('btn-create').onclick=()=>{ const name=$('name')?.value.trim()||'Joueur'; socket.emit('createRoom',{name}); };
   $('btn-join').onclick=()=>{ const name=$('name')?.value.trim()||'Joueur'; const code=$('join-code')?.value.trim().toUpperCase(); socket.emit('joinRoom',{code,name}); };
-  $('btn-start').onclick=()=>socket.emit('startRound');
 
-  // Bouton "Manche suivante" : on aligne sur l'évènement serveur 'playerReadyNext'
+  // Nouveau: bouton prêt / pas prêt du salon
+  $('btn-ready').onclick=()=>{
+    myLobbyReady = !myLobbyReady;
+    $('btn-ready').textContent = myLobbyReady ? 'Annuler prêt' : 'Je suis prêt';
+    socket.emit('playerReadyLobby', { ready: myLobbyReady });
+  };
+
+  // Bouton "Manche suivante" (prêt inter-manches existant)
   $('btn-next').onclick=()=>{
     $('btn-next').disabled = true;
     $('btn-next').textContent = 'Prêt ✓';
@@ -183,13 +214,20 @@
     $('lobby-code').textContent=code;
     show('screen-lobby');
     $('host-badge').style.display='inline-block';
-    $('host-actions').style.display='block';
+    // Reset prêt salon
+    myLobbyReady = false;
+    $('btn-ready').textContent = 'Je suis prêt';
+    $('timer-lobby').style.display='none';
   });
 
   socket.on('roomJoined',({code})=>{
     me.code=code;
     $('lobby-code').textContent=code;
     show('screen-lobby');
+    // Reset prêt salon
+    myLobbyReady = false;
+    $('btn-ready').textContent = 'Je suis prêt';
+    $('timer-lobby').style.display='none';
   });
 
   socket.on('roomUpdate',(snap)=>{
@@ -201,6 +239,26 @@
       list.appendChild(a); list.appendChild(b);
     });
     updateScoreboard(snap.players);
+  });
+
+  // === Prêt au salon ===
+  socket.on('lobbyReadyProgress', ({ ready, total })=>{
+    const pill = $('lobby-ready-pill'); if (pill) pill.textContent = `${ready}/${total} prêts`;
+  });
+
+  socket.on('lobbyCountdownStarted', ({ seconds })=>{
+    $('timer-lobby').style.display='inline-block';
+    toast(`Tout le monde est prêt ! Départ dans ${seconds}s…`);
+  });
+
+  socket.on('lobbyCountdownCancelled', ()=>{
+    $('timer-lobby').style.display='none';
+    if (myLobbyReady) {
+      // On repasse "non prêt" côté UI (le serveur a tout annulé)
+      myLobbyReady = false;
+      $('btn-ready').textContent = 'Je suis prêt';
+    }
+    toast('Un joueur a rejoint. Décompte annulé, remettez-vous prêts.');
   });
 
   // PHASE INDICES
@@ -288,18 +346,17 @@
     const tr=$('timer-reveal'); if(tr) tr.textContent='--:--';
   });
 
-  // Nouveau : compteur de prêts (évènement dédié)
+  // Compteurs phases
   socket.on('readyProgress', ({ ready, total })=>{
     const pr=$('progress-ready'); if(pr) pr.textContent=`${ready}/${total} prêts`;
   });
 
-  // Progression phases (indices / votes)
   socket.on('phaseProgress', ({ phase, submitted, total })=>{
     if (phase==='hints'){ const el=$('progress-hints'); if(el) el.textContent=`${submitted}/${total}`; }
     else if (phase==='voting'){ const el=$('progress-vote'); if(el) el.textContent=`${submitted}/${total}`; }
   });
 
-  // Timers (inclut pré-démarrage quand tout le monde est prêt)
+  // Timers (indices / votes / pré-démarrage / lobby)
   socket.on('timer', ({ phase, leftMs })=>{
     const left=Math.ceil(leftMs/1000);
     if (phase==='hints'){
@@ -311,9 +368,11 @@
       if (left>0 && left<=5){ flash('timer-vote'); beep(); }
       if (left<=0){ const cont=$('vote-buttons')||document.createElement('div'); Array.from(cont.querySelectorAll('button')).forEach(b=>b.disabled=true); }
     } else if (phase==='prestart'){
-      // Mini compte à rebours avant nouvelle manche
       const el=$('timer-reveal'); if(el) el.textContent=fmt(leftMs);
       if (left>0 && left<=3){ flash('timer-reveal'); beep(); }
+    } else if (phase==='lobby'){
+      const el=$('timer-lobby'); if(el){ el.style.display='inline-block'; el.textContent=fmt(leftMs); }
+      if (left>0 && left<=5){ flash('timer-lobby'); beep(); }
     }
   });
 
@@ -323,6 +382,10 @@
     $('winners-text').textContent = winners.length>1 ? `Égalité ! ${names}` : `${names} gagne la partie !`;
     $('modal').style.display='flex';
     show('screen-lobby');
+    // Reset prêt salon
+    myLobbyReady = false;
+    $('btn-ready').textContent = 'Je suis prêt';
+    $('timer-lobby').style.display='none';
     if (autoReset) toast('Scores réinitialisés automatiquement');
   });
 
