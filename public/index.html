@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Hint or Lie · by Mits</title>
+  <title>Hint or Lie</title>
   <script src="/socket.io/socket.io.js"></script>
 
   <style>
@@ -252,27 +252,7 @@
       border-radius:16px;
     }
     #scoreboard li span:first-child{ font-weight:700; }
-  
-/* === Signature badge (by Mits) === */
-.title-line{
-  display:flex; align-items:center; gap:12px; flex-wrap:wrap;
-}
-.signature-badge{
-  font-size:13px; font-weight:800; letter-spacing:.2px;
-  color:var(--ink); opacity:.9;
-  padding:4px 10px; border-radius:999px;
-  border:1px solid var(--line);
-  background: linear-gradient(180deg, rgba(42,183,246,.12), rgba(42,183,246,.06));
-  box-shadow: 0 6px 16px rgba(42,183,246,.12);
-}
-.signature-badge::before{
-  content:'✦'; margin-right:6px; opacity:.9;
-}
-@media (max-width:560px){
-  .title-line{ flex-direction:column; align-items:flex-start; gap:6px; }
-}
-
-</style>
+  </style>
 </head>
 <body class="stars">
 
@@ -299,10 +279,7 @@
         <rect x="50" y="34" width="34" height="16" rx="8" fill="#7fd7ff"/>
       </svg>
       <div>
-        <div class="title-line">
         <h1>Hint or Lie</h1>
-        <span class="signature-badge" title="Créé par Mits">by Mits</span>
-      </div>
         <div class="muted"><strong>Chaque indice compte.</strong> Bluffez, suspectez, et attrapez l’intrus.</div>
       </div>
     </div>
