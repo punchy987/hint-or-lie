@@ -496,6 +496,58 @@
     const box = $('lb-list'); if (box){ box.innerHTML=''; box.appendChild(frag); }
   }
 
+// ===== Leaderboard: spinner + cooldown + auto-refresh =====
+function requestLeaderboard(){ socket.emit('getLeaderboard'); }
+
+(function setupLeaderboardUI(){
+  const btn = $('btn-lb-refresh');
+  if (!btn) return;
+  const original = btn.textContent;
+  let refreshing = false;
+
+  // (ré)abonne le listener proprement
+  const onData = (items)=>{
+    renderLeaderboard(items);
+    if (refreshing){
+      refreshing = false;
+      btn.disabled = false;
+      btn.textContent = original;
+    }
+  };
+  if (socket.off) socket.off('leaderboardData', onData);
+  socket.on('leaderboardData', onData);
+
+  // Bouton "Actualiser" avec spinner + petit cooldown
+  btn.onclick = ()=>{
+    if (refreshing) return;
+    refreshing = true;
+    btn.disabled = true;
+    btn.textContent = '...';
+    requestLeaderboard();
+    // filet de sécu si le serveur tarde
+    setTimeout(()=>{
+      if (refreshing){
+        refreshing = false;
+        btn.disabled = false;
+        btn.textContent = original;
+      }
+    }, 1500);
+  };
+
+  // Auto-refresh discret toutes les 45s quand l’onglet est visible
+  let timer = null;
+  const start = ()=>{
+    if (!timer){
+      requestLeaderboard();           // ping immédiat
+      timer = setInterval(requestLeaderboard, 45000);
+    }
+  };
+  const stop = ()=>{ if (timer){ clearInterval(timer); timer = null; } };
+
+  document.addEventListener('visibilitychange', ()=> document.hidden ? stop() : start());
+  socket.on('connect', start);
+  start();
+})();
 
   let me = { id: null, code: null };
   let room = { players: [], state: 'lobby' };
