@@ -26,30 +26,60 @@ try {
   console.warn('[server] Firebase not configured:', e.message);
 }
 
-async function upsertWin({ deviceId, pseudo }){
+// RP ranked : +3 imposteur gagnant, +1 équipier gagnant, -1 défaite
+// Plancher Bronze : si RP courant < 10, on ne descend jamais sous 0
+async function upsertRoundResult({ deviceId, pseudo, didWin, isImpostor }) {
   try{
     if (!db || !deviceId) return;
     const ref = db.collection('players').doc(String(deviceId));
+
     await db.runTransaction(async (tx)=>{
       const snap = await tx.get(ref);
-      const prev = snap.exists ? snap.data() : { wins:0 };
+      const prev = snap.exists ? (snap.data() || {}) : {};
+
+      const prevRP    = Number(prev.rp || 0);
+      const rpDelta   = didWin ? (isImpostor ? 3 : 1) : -1;     // <-- barème RP
+      const winsDelta = didWin ? 1 : 0;
+
+      let newRP = prevRP + rpDelta;
+      if (prevRP < 10 && newRP < 0) newRP = 0;                  // <-- plancher Bronze
+
       tx.set(ref, {
         deviceId: String(deviceId),
-        lastPseudo: String(pseudo||prev.lastPseudo||'Joueur').slice(0,16),
-        wins: Number(prev.wins||0) + 1,
-        updatedAt: _admin.firestore.FieldValue.serverTimestamp()
+        lastPseudo: String(pseudo || prev.lastPseudo || 'Joueur').slice(0,16),
+
+        rounds: Number(prev.rounds || 0) + 1,
+        wins: Number(prev.wins || 0) + winsDelta,
+        winsCrew: Number(prev.winsCrew || 0) + (didWin && !isImpostor ? 1 : 0),
+        winsImpostor: Number(prev.winsImpostor || 0) + (didWin && isImpostor ? 1 : 0),
+
+        rp: newRP,
+        updatedAt: _admin ? _admin.firestore.FieldValue.serverTimestamp() : new Date()
       }, { merge:true });
     });
-  }catch(e){ console.error('upsertWin error', e.message); }
+  }catch(e){
+    console.error('upsertRoundResult error', e.message);
+  }
 }
+
+
 
 async function getTop50(){
   try{
     if (!db) return [];
-    const qs = await db.collection('players').orderBy('wins','desc').limit(50).get();
-    return qs.docs.map(d=>({ deviceId:d.id, ...(d.data()||{}) }));
+    const qs = await db.collection('players')
+      .orderBy('rp','desc')    // <-- RP d’abord
+      .orderBy('wins','desc')  // puis victoires
+      .limit(50).get();
+    return qs.docs.map(d => ({ deviceId:d.id, ...(d.data()||{}) }));
   }catch(e){ console.error('getTop50 error', e.message); return []; }
 }
+async function getMyStats(deviceId){
+  if (!db || !deviceId) return null;
+  const snap = await db.collection('players').doc(String(deviceId)).get();
+  return snap.exists ? (snap.data() || {}) : null;
+}
+
 
 // === Statique ===
 app.use(express.static(__dirname));
@@ -358,18 +388,24 @@ function finishVoting(code){
   }
 
   
-  // Determine individual winners for persistent wins
-  const winnersIds = [];
-  if (caught) {
-    for (const [id,p] of r.players.entries()) if (!p.isImpostor) winnersIds.push(id);
-  } else {
-    if (impId) winnersIds.push(impId);
+// Persistance RP pour tout le monde (gagnants & perdants)
+const winners = new Set();
+if (caught) {
+  for (const [id,p] of r.players.entries()) if (!p.isImpostor) winners.add(id);
+} else if (impId) {
+  winners.add(impId);
+}
+for (const [id,p] of r.players.entries()) {
+  const didWin = winners.has(id);
+  if (p?.deviceId) {
+    upsertRoundResult({
+      deviceId: p.deviceId,
+      pseudo: p.name,
+      didWin,
+      isImpostor: !!p.isImpostor
+    });
   }
-  // Fire-and-forget update to Firestore
-  for (const wid of winnersIds){
-    const p = r.players.get(wid);
-    if (p && p.deviceId) upsertWin({ deviceId: p.deviceId, pseudo: p.name });
-  }
+}
 r.state = 'reveal';
   io.to(code).emit('roundResult', {
     impostorId: impId,
@@ -410,7 +446,23 @@ io.on('connection',(socket)=>{
     if (deviceId) profile.deviceId = String(deviceId).slice(0,64);
     if (pseudo) profile.lastPseudo = String(pseudo).slice(0,16);
   });
+  socket.on('getLeaderboard', async ()=>{
+  try{
+    const top = await getTop50();
+    socket.emit('leaderboardData', top);
+  }catch(e){ socket.emit('errorMsg','Impossible de charger le Top 50'); }
+});
 
+socket.on('getMyStats', async ({ deviceId })=>{
+  const doc = await getMyStats(String(deviceId||''));
+  socket.emit('myStats', doc ? {
+    rp: Number(doc.rp||0),
+    rounds: Number(doc.rounds||0),
+    wins: Number(doc.wins||0),
+    winsCrew: Number(doc.winsCrew||0),
+    winsImpostor: Number(doc.winsImpostor||0)
+  } : { rp:0, rounds:0, wins:0, winsCrew:0, winsImpostor:0 });
+});
 
   // ——— CRÉER ———
   socket.on('createRoom', ({name, deviceId})=>{
