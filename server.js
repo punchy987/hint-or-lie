@@ -30,7 +30,6 @@ try {
 } catch (e) {
   console.log('[server] Firebase SDK not installed (optional)');
 }
-
 // RP ranked : +3 imposteur gagnant, +1 équipier gagnant, -1 défaite
 // Plancher Bronze : si RP courant < 10, on ne descend jamais sous 0
 async function upsertRoundResult({ deviceId, pseudo, didWin, isImpostor }) {
