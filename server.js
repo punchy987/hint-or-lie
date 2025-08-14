@@ -9,6 +9,48 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
+// === Firestore (server-side, optional) ===
+let db = null;
+try {
+  const admin = require('firebase-admin');
+  if (!admin.apps.length) {
+    if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+      admin.initializeApp({ credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)) });
+    } else {
+      admin.initializeApp();
+    }
+  }
+  db = admin.firestore();
+  var _admin = admin;
+} catch(e){
+  console.warn('[server] Firebase not configured:', e.message);
+}
+
+async function upsertWin({ deviceId, pseudo }){
+  try{
+    if (!db || !deviceId) return;
+    const ref = db.collection('players').doc(String(deviceId));
+    await db.runTransaction(async (tx)=>{
+      const snap = await tx.get(ref);
+      const prev = snap.exists ? snap.data() : { wins:0 };
+      tx.set(ref, {
+        deviceId: String(deviceId),
+        lastPseudo: String(pseudo||prev.lastPseudo||'Joueur').slice(0,16),
+        wins: Number(prev.wins||0) + 1,
+        updatedAt: _admin.firestore.FieldValue.serverTimestamp()
+      }, { merge:true });
+    });
+  }catch(e){ console.error('upsertWin error', e.message); }
+}
+
+async function getTop50(){
+  try{
+    if (!db) return [];
+    const qs = await db.collection('players').orderBy('wins','desc').limit(50).get();
+    return qs.docs.map(d=>({ deviceId:d.id, ...(d.data()||{}) }));
+  }catch(e){ console.error('getTop50 error', e.message); return []; }
+}
+
 // === Statique ===
 app.use(express.static(__dirname));
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
@@ -315,7 +357,20 @@ function finishVoting(code){
     const imp = r.players.get(impId); if (imp) imp.score += 2;
   }
 
-  r.state = 'reveal';
+  
+  // Determine individual winners for persistent wins
+  const winnersIds = [];
+  if (caught) {
+    for (const [id,p] of r.players.entries()) if (!p.isImpostor) winnersIds.push(id);
+  } else {
+    if (impId) winnersIds.push(impId);
+  }
+  // Fire-and-forget update to Firestore
+  for (const wid of winnersIds){
+    const p = r.players.get(wid);
+    if (p && p.deviceId) upsertWin({ deviceId: p.deviceId, pseudo: p.name });
+  }
+r.state = 'reveal';
   io.to(code).emit('roundResult', {
     impostorId: impId,
     impostorName: r.players.get(impId)?.name,
@@ -349,23 +404,40 @@ function finishVoting(code){
 io.on('connection',(socket)=>{
   console.log('[server] client connected', socket.id);
   let joined = { code:null };
+  let profile = { deviceId:null, lastPseudo:null };
+
+  socket.on('hello', ({ deviceId, pseudo }={})=>{
+    if (deviceId) profile.deviceId = String(deviceId).slice(0,64);
+    if (pseudo) profile.lastPseudo = String(pseudo).slice(0,16);
+  });
+
 
   // ——— CRÉER ———
-  socket.on('createRoom', ({name})=>{
+  socket.on('createRoom', ({name, deviceId})=>{
     const code = createRoom(socket.id, String(name||'Joueur').slice(0,16));
     socket.join(code); joined.code=code;
+    profile.lastPseudo = String(name||'Joueur').slice(0,16);
+    profile.deviceId = String(deviceId||profile.deviceId||'').slice(0,64) || null;
+    // attach deviceId to host entry
+    const r = rooms.get(code);
+    if (r && r.players.has(socket.id)) {
+      const p = r.players.get(socket.id);
+      p.deviceId = profile.deviceId;
+    }
     socket.emit('roomCreated',{code});
     broadcast(code);
   });
 
   // ——— REJOINDRE ———
-  socket.on('joinRoom', ({ code, name })=>{
+  socket.on('joinRoom', ({ code, name, deviceId })=>{
     code = String(code||'').trim();
     if (!/^\d{4}$/.test(code)) return socket.emit('errorMsg','Code invalide (4 chiffres)');
     const r = rooms.get(code); if(!r) return socket.emit('errorMsg','Salle introuvable');
 
     socket.join(code); joined.code = code;
-    r.players.set(socket.id, { name:String(name||'Joueur').slice(0,16), hint:null, vote:null, isImpostor:false, score:0 });
+    profile.lastPseudo = String(name||'Joueur').slice(0,16);
+    profile.deviceId = String(deviceId||profile.deviceId||'').slice(0,64) || null;
+    r.players.set(socket.id, { name:profile.lastPseudo, hint:null, vote:null, isImpostor:false, score:0, deviceId: profile.deviceId });
 
     // si décompte lobby en cours, on annule
     if (r.state === 'lobby' && r.timer?.phase === 'lobby') {
@@ -471,7 +543,19 @@ io.on('connection',(socket)=>{
     broadcast(joined.code);
   });
 
-  // ——— DÉCONNEXION ———
+  
+  // ——— LEADERBOARD ———
+  socket.on('getLeaderboard', async ()=>{
+    try{
+      const top = await getTop50();
+      socket.emit('leaderboardData', top.map(x=>({ 
+        deviceId: x.deviceId, 
+        pseudo: x.lastPseudo || 'Joueur', 
+        wins: Number(x.wins||0) 
+      })));
+    }catch(e){ socket.emit('errorMsg','Impossible de charger le Top 50'); }
+  });
+// ——— DÉCONNEXION ———
   socket.on('disconnect',()=>{
     const code = joined.code; if(!code) return;
     const r = rooms.get(code); if(!r) return;

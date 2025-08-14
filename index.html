@@ -340,6 +340,14 @@
         <li><strong>Victoire :</strong> premier à <strong>10 points</strong>.</li>
       </ul>
     </div>
+    <div class="rules" id="lb" style="margin-top:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+        <h4 style="margin:0">Palmarès — Top 50</h4>
+        <button class="btn-secondary" id="btn-lb-refresh" type="button">Actualiser</button>
+      </div>
+      <div id="lb-list" class="muted" style="margin-top:8px">Chargement…</div>
+    </div>
+
   </div>
 
   <!-- LOBBY -->
@@ -449,6 +457,45 @@
 <script>
   const $ = (id) => document.getElementById(id);
   const socket = io();
+  function getDeviceId(){
+    const k='hol_device'; let id = localStorage.getItem(k);
+    if(!id){ id = 'd-' + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem(k,id); }
+    return id;
+  }
+
+  function tierFromWins(w){
+    if (w>=120) return 'Diamond';
+    if (w>=60)  return 'Platinum';
+    if (w>=25)  return 'Gold';
+    if (w>=10)  return 'Silver';
+    return 'Bronze';
+  }
+  function renderLeaderboard(items){
+    const meId = getDeviceId();
+    if (!Array.isArray(items) || !items.length){
+      $('lb-list').innerHTML = '<span class="muted">Aucun résultat pour l’instant.</span>';
+      return;
+    }
+    const frag = document.createDocumentFragment();
+    const ul = document.createElement('ul');
+    ul.style.listStyle='none'; ul.style.padding='0'; ul.style.margin='0';
+    items.forEach((x, i)=>{
+      const li = document.createElement('li');
+      const meMark = x.deviceId===meId ? ' (toi)' : '';
+      const tier = tierFromWins(x.wins||0);
+      li.style.display='grid';
+      li.style.gridTemplateColumns='minmax(24px,40px) 1fr auto';
+      li.style.gap='8px';
+      li.style.padding='6px 0';
+      li.innerHTML = `<span>#${i+1}</span>
+        <span><strong>${x.pseudo||'Joueur'}</strong> <span class="pill" style="margin-left:6px">${tier}</span>${meMark}</span>
+        <span class="muted">${x.wins||0} victoires</span>`;
+      ul.appendChild(li);
+    });
+    frag.appendChild(ul);
+    const box = $('lb-list'); if (box){ box.innerHTML=''; box.appendChild(frag); }
+  }
+
 
   let me = { id: null, code: null };
   let room = { players: [], state: 'lobby' };
@@ -562,11 +609,11 @@
   $('btn-join').onclick=()=>{
     const name = $('name-join')?.value.trim() || 'Joueur';
     const code = $('join-code')?.value.trim();
-    socket.emit('joinRoom',{code,name});
+    const deviceId = getDeviceId(); socket.emit('hello', { deviceId, pseudo: name }); socket.emit('joinRoom',{code,name,deviceId});
   };
   $('btn-create').onclick=()=>{
     const name=$('name-create')?.value.trim()||'Joueur';
-    socket.emit('createRoom',{name});
+    const deviceId = getDeviceId(); socket.emit('hello', { deviceId, pseudo: name }); socket.emit('createRoom',{name,deviceId});
   };
 
   /* Toggle règles */
@@ -601,7 +648,9 @@
   };
 
   /* Socket events */
-  socket.on('connect',()=>{ me.id=socket.id; });
+  socket.on('connect',()=>{
+    socket.emit('getLeaderboard');
+ me.id=socket.id; });
 
   socket.on('roomCreated',({code})=>{
     me.code=code;
@@ -890,6 +939,11 @@ socket.on('timer', ({ phase, leftMs })=>{
 
   /* Affichage initial */
   show('screen-home');
+
+
+  // Leaderboard events
+  if ($('btn-lb-refresh')) $('btn-lb-refresh').onclick = ()=> socket.emit('getLeaderboard');
+  socket.on('leaderboardData', renderLeaderboard);
 </script>
 </body>
 </html>

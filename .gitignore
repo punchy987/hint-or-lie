@@ -2,3 +2,9 @@ node_modules
 .DS_Store 
 *.log 
 .env 
+hint-or-lie-firebase-adminsdk-fbsvc-fcfacbacb.json 
+hint-or-lie-firebase-adminsdk-fbsvc-fcfacb4301e.json 
+# Firebase keys
+hint-or-lie-firebase-adminsdk-*.json
+*_serviceaccount*.json
+secrets/**
