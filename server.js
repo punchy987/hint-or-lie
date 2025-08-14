@@ -107,8 +107,8 @@ const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const DOMAINS = {
   "Fruits Fleurs Légumes": [
     "Mangue","Papaye","Ananas","Banane","Pomme","Poire","Raisin","Myrtille",
-    "Pastèque","Melon","Citron","Orange","Kiwi","Fraise","Coco","Concombre",
-    "Tomate","Poivron","Oignons","Hibiscus","Tipanier","Rose","Corossol",
+    "Pastèque","Melon","Citron","Orange","Kiwi","Fraise","Noix de coco","Concombre",
+    "Tomate","Poivron","Oignons","Hibiscus","Tipanier (frangipanier)","Rose","Corossol",
     "Laitue","Carotte","Aubergine","Courgette","Basilic"
   ],
   "Animaux": [
@@ -118,16 +118,16 @@ const DOMAINS = {
   ],
   "Villes": [
     "Paris","Londres","Tokyo","Osaka","New York","Los Angeles","Rome","Athènes",
-    "Madrid","Barcelone","Berlin","Munich","Rio","Sao Paulo","Sydney","Melbourne",
+    "Madrid","Barcelone","Berlin","Munich","Rio","São Paulo","Sydney","Melbourne",
     "Montréal","Toronto","Le Caire","Alexandrie","Dubaï","Abu Dhabi","Manchester"
   ],
   "Pays": [
     "France","Japon","Brésil","Canada","Égypte","Italie","Espagne","Allemagne",
-    "Australie","Maroc","Mexique","USA","Chine","Inde","Royaume-Uni"
+    "Australie","Maroc","Mexique","États-Unis","Chine","Inde","Royaume-Uni"
   ],
   "Sports": [
-    "Football","Rugby","Tennis","Badminton","Basket","Handball","Boxe","Arts Martiaux",
-    "Formule 1","Rallye","Surf","Voile","Cyclisme","VTT","Ski","Snowboard","Golf",
+    "Football","Rugby","Tennis","Badminton","Basket","Handball","Boxe","Arts martiaux",
+    "Formule 1","Rallye","Surf","Voile","Cyclisme","VTT (Vélo tout-terrain)","Ski","Snowboard","Golf",
     "Cricket","Danse"
   ],
   "Objets": [
@@ -140,15 +140,16 @@ const DOMAINS = {
     "Glacier","Cascade","Geyser","Ciel","Océan","Soleil","Lune"
   ],
   "Métiers": [
-    "Médecin","Infirmier","Professeur","Étudiant","Pompier","Policier","Cuisinier",
-    "Serveur","Pilote","Hôtesse de l'Air","Architecte","Ingénieur"
+    "Médecin","Infirmier","Professeur","Pompier","Policier","Cuisinier",
+    "Serveur","Pilote","Hôtesse de l'Air","Architecte","Ingénieur",
+    "Boulanger","Plombier","Électricien","Vétérinaire"
   ],
   "Transports": [
     "Voiture","Moto","Bus","Tram","Train","Métro","Avion","Hélicoptère","Bateau",
     "Ferry","Vélo","Trottinette"
   ],
   "Couleurs Formes": [
-    "Rouge","Orange","Bleu","Cyan","Vert","Lime","Noir","Gris","Blanc","Ivoire",
+    "Rouge","Orange","Bleu","Cyan","Vert","Vert citron","Noir","Gris","Blanc","Ivoire",
     "Cercle","Ellipse","Carré","Rectangle","Triangle","Pyramide"
   ],
   "Cinéma": [
@@ -164,7 +165,7 @@ const DOMAINS = {
     "Hunter x Hunter","Fairy Tail","Black Clover","Chainsaw Man"
   ],
   "Personnalités": [
-    "Beyonce","Rihanna","Cristiano Ronaldo","Lionel Messi","Taylor Swift","Ariana Grande",
+    "Beyoncé","Rihanna","Cristiano Ronaldo","Lionel Messi","Taylor Swift","Ariana Grande",
     "Keanu Reeves","Tom Cruise","Elon Musk","Jeff Bezos","Drake","The Weeknd","Shakira",
     "Eminem","Adele","Lady Gaga","Robert Downey Jr.","Chris Hemsworth","Scarlett Johansson",
     "Zendaya","Dwayne Johnson","Jason Momoa","Serena Williams","Roger Federer","Michael Jordan",
@@ -174,9 +175,40 @@ const DOMAINS = {
     "Apple","Samsung","Xiaomi","Sony","Dell","HP","JBL","Lenovo","BMW","Mercedes","Audi",
     "Tesla","Toyota","Honda","Peugeot","Renault","Ford","Ferrari","Lamborghini","Adidas",
     "Nike","Puma","Reebok","Lacoste","Coca-Cola","Pepsi","Nestlé","Red Bull","Starbucks",
-    "Nutella","McDonalds","Burger King","KFC"
+    "Nutella","McDonald’s","Burger King","KFC"
   ]
 };
+// ——— Sous-familles par thème pour des paires "proches" ———
+const CLUSTERS = {
+  "Couleurs Formes": [
+    ["Rouge","Orange","Bleu","Cyan","Vert","Vert citron","Noir","Gris","Blanc","Ivoire"], // Couleurs
+    ["Cercle","Ellipse","Carré","Rectangle","Triangle","Pyramide"]                         // Formes
+  ],
+  "Fruits Fleurs Légumes": [
+    ["Mangue","Papaye","Ananas","Banane","Pomme","Poire","Raisin","Myrtille","Pastèque","Melon","Citron","Orange","Kiwi","Fraise","Noix de coco","Corossol"], // Fruits
+    ["Concombre","Tomate","Poivron","Oignons","Laitue","Carotte","Aubergine","Courgette","Basilic"],                                                          // Légumes/herbes
+    ["Hibiscus","Tipanier (frangipanier)","Rose"]                                                                                                              // Fleurs
+  ],
+  "Animaux": [
+    ["Chat","Chien","Kangourou","Panda","Koala","Tigre","Lion","Cheval","Zèbre","Loutre","Castor"], // Mammifères
+    ["Perroquet","Toucan","Aigle","Faucon"],                                                        // Oiseaux
+    ["Dauphin","Requin"],                                                                           // Mer
+    ["Tortue","Grenouille","Serpent","Souris"]                                                      // Reptiles/Amphibiens & petits
+  ],
+  "Transports": [
+    ["Voiture","Moto","Bus","Tram","Train","Métro","Trottinette","Vélo"],
+    ["Avion","Hélicoptère"],
+    ["Bateau","Ferry"]
+  ],
+  "Sports": [
+    ["Football","Rugby","Basket","Handball"],
+    ["Tennis","Badminton","Golf","Cricket"],
+    ["Boxe","Arts martiaux","Danse"],
+    ["Formule 1","Rallye","Surf","Voile","Cyclisme","VTT (Vélo tout-terrain)","Ski","Snowboard"]
+  ]
+};
+
+
 
 // ===== UTILS (texte) =====
 const deburr = (s='') => s.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
@@ -223,6 +255,8 @@ function isHintAllowed(secretWord, hint, domain){
 }
 
 // ===== Tirage "anti-répétitions" =====
+
+// Tirage simple (ancien comportement) avec anti-répétition de domaines & mots
 function pickPairFromDomainsUnique(room) {
   room.used ||= {};
   room.lastDomains ||= [];
@@ -265,6 +299,58 @@ function pickPairFromDomainsUnique(room) {
   if (room.lastDomains.length > 5) room.lastDomains.shift();
 
   return { common, impostor, domain };
+}
+
+// Tirage "smart" : si des clusters existent pour le thème, on force A vs B (paires proches)
+function pickPairSmart(room){
+  room.used ||= {};
+  room.lastDomains ||= [];
+  const cooldown = room.domainCooldown ?? 1;
+
+  const all = Object.keys(DOMAINS);
+  const validDomains = all.filter(d => (DOMAINS[d]?.length || 0) >= 2);
+  if (validDomains.length === 0) {
+    return { common:'Erreur', impostor:'Erreur', domain:'Aucun domaine' };
+  }
+
+  const banned = new Set(room.lastDomains.slice(-cooldown));
+  const candidates = validDomains.filter(d => !banned.has(d));
+  const domain = (candidates.length ? pick(candidates) : pick(validDomains));
+
+  room.used[domain] ||= new Set();
+  const usedSet = room.used[domain];
+
+  const clusters = CLUSTERS[domain];
+  if (clusters && clusters.length >= 2) {
+    // choisit deux clusters distincts
+    let a = pick(clusters), b = pick(clusters), guard = 0;
+    while (b === a && guard++ < 10) b = pick(clusters);
+
+    // filtre les mots déjà utilisés
+    const A = a.filter(w => !usedSet.has(w));
+    const B = b.filter(w => !usedSet.has(w));
+    const poolA = A.length ? A : a.slice();
+    const poolB = B.length ? B : b.slice();
+
+    // common depuis A, en évitant de répéter le dernier common
+    let common = pick(poolA);
+    guard = 0;
+    while (common === room.lastCommon && poolA.length > 1 && guard++ < 10) {
+      common = pick(poolA);
+    }
+    // imposteur depuis B
+    const impostor = pick(poolB);
+
+    usedSet.add(common); usedSet.add(impostor);
+    room.lastCommon = common;
+    room.lastDomains.push(domain);
+    if (room.lastDomains.length > 5) room.lastDomains.shift();
+
+    return { common, impostor, domain };
+  }
+
+  // fallback : ancien tirage si pas de clusters
+  return pickPairFromDomainsUnique(room);
 }
 
 // ===== TIMERS =====
@@ -317,7 +403,7 @@ function startRound(code){
 
   for (const p of r.players.values()){ p.hint=null; p.vote=null; p.isImpostor=false; }
 
-  const pair = pickPairFromDomainsUnique(r);
+  const pair = pickPairSmart(r);
   r.lastDomain = pair.domain; r.lastCommon = pair.common;
 
   const impId = pick(ids);

@@ -195,6 +195,7 @@
     .theme-chip b{ color:#79d8ff; }
     .phase-bar{
       position:relative;
+      z-index: 0;
       overflow:hidden;
       background: linear-gradient(180deg, #0f172a, #0b1220);
       border:1px solid #0f1930;
@@ -208,6 +209,7 @@
       transform: scaleX(var(--progress, 0)); /* 0→1 */
       background: linear-gradient(90deg, rgba(42,183,246,.25), rgba(244,63,94,.25));
       filter: saturate(110%);
+      z-index: -1;
       pointer-events:none;
       /* transition enlevée pour éviter les à-coups, anim gérée en JS */
       transition: none;
@@ -272,6 +274,115 @@
   .title-line{ flex-direction:column; align-items:flex-start; gap:6px; }
 }
 
+
+/* === Responsive mobile overhaul (<= 600px) === */
+@media (max-width: 600px){
+  :root{ --glow: 0 0 20px rgba(42,183,246,.12); }
+  html, body { overscroll-behavior-y: contain; }
+  .wrap{ max-width: 100%; padding: 10px; }
+  .card{ padding: 12px; border-radius: 14px; }
+  .row{ flex-direction: column; align-items: stretch; gap: 8px; }
+  .hero{ flex-direction: row; gap: 10px; padding: 12px; }
+  .hero svg{ width: 46px; height: 46px; flex: 0 0 46px; }
+  .hero h1{ font-size: 22px; }
+  .muted{ font-size: 14px; }
+  h3.section-title{ font-size: 16px; }
+  .hint-word{ font-size: 24px; word-break: break-word; }
+  input, button{ padding: 12px; font-size: 15px; min-height: 44px; }
+  .btn-secondary{ font-weight: 700; }
+  .tabs{ margin-top: 10px; }
+  .tab-btn{ padding: 10px 12px; font-size: 14px; }
+  .tab-btn[aria-selected="true"]{ margin: 6px; }
+  .tab-pane{ padding: 10px; }
+  /* Phase bar becomes single column centered */
+  .phase-bar{
+    grid-template-columns: 1fr;
+    gap: 6px;
+    text-align: center;
+    padding: 8px 10px;
+  }
+  .phase-left, .phase-center, .phase-right{
+    justify-content: center;
+  }
+  .kpi{ min-width: auto; padding: 6px 8px; font-size: 14px; }
+  .theme-chip{ padding: 6px 10px; gap: 6px; }
+  .theme-chip b{ font-size: 15px; }
+  /* Hints and vote */
+  #hints p{ padding: 8px 10px; font-size: 15px; }
+  .grid-votes{ grid-template-columns: 1fr; gap: 8px; }
+  #vote-buttons button{ padding-right: 38px; font-size: 15px; }
+  /* Lobby list items */
+  #players .player, #players div{ padding: 8px 10px; border-radius: 10px; background:#0b1220; border:1px solid var(--line); }
+  /* Leaderboard inside home */
+  #lb{ padding: 10px; }
+  #scoreboard{ position: static; margin: 12px 10px 18px; padding: 10px; }
+  #scoreboard ul{ grid-template-columns: 1fr auto; row-gap: 6px; }
+  #scoreboard li span:first-child{ overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Pills & badges */
+  .pill{ padding: 5px 8px; font-size: 13px; }
+  .role{ padding: 6px 10px; font-size: 13px; }
+  .signature-badge{ font-size: 12px; padding: 4px 8px; }
+  /* Modal */
+  #modal .box{ max-width: 92vw; width: 92vw; padding: 14px; }
+}
+
+/* Extra-small phones (<= 380px) */
+@media (max-width: 380px){
+  .hero{ flex-direction: column; align-items: flex-start; }
+  .hero svg{ width: 40px; height: 40px; }
+  .hero h1{ font-size: 20px; }
+  .tab-nav{ flex-direction: column; }
+  .tab-btn[aria-selected="true"]{ margin: 6px; border-radius: 10px; }
+  .hint-word{ font-size: 22px; }
+  .theme-chip b{ font-size: 14px; }
+  #hints p{ font-size: 14px; }
+  #vote-buttons button{ font-size: 14px; }
+}
+
+/* Touch optimizations */
+@media (hover: none){
+  button:active{ transform: translateY(1px); }
+  input, button{ -webkit-tap-highlight-color: transparent; }
+}
+
+/* ===== Palmarès #lb (densification mobile) ===== */
+@media (max-width: 600px){
+  /* Palmarès Top 50 (pane Accueil) */
+  #lb{ padding: 10px; }
+  #lb-list ul{ row-gap: 4px; }
+  #lb-list li{ padding: 4px 0; }
+  #lb-list li span:first-child{ min-width: 28px; text-align: right; }
+  #lb-list li span:nth-child(2){
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  /* On cache le badge de palier pour gagner de la place */
+  #lb-list .pill{ display: none; }
+
+  /* Scoreboard repliable */
+  #scoreboard{ padding: 10px; }
+  #scoreboard ul{ row-gap: 6px; }
+  #scoreboard li{ padding: 4px 0; }
+}
+/* === Fix: le chip thème ne coupe plus le texte === */
+.phase-left, .phase-center, .phase-right { min-width: 0; }
+
+.theme-chip{
+  display: flex;           /* au lieu de inline-flex pour autoriser double ligne */
+  max-width: 100%;
+  flex-wrap: wrap;         /* autorise le retour à la ligne */
+  justify-content: center; /* reste centré */
+}
+
+.theme-chip b{
+  white-space: normal;     /* autorise la casse */
+  word-break: break-word;  /* casse un mot long si besoin */
+  overflow-wrap: anywhere; /* force un wrap si rien d’autre ne marche */
+}
+
+@media (max-width:600px){
+  .theme-chip{ padding: 6px 10px; gap: 6px; }
+  .theme-chip b{ font-size: 14px; }
+}
 </style>
 </head>
 <body class="stars">
@@ -452,6 +563,7 @@
   <ul id="score-list"></ul>
 </div>
 
+
 <p class="muted" id="toast" style="display:none;text-align:center"></p>
 
 <script>
@@ -470,6 +582,7 @@
     if (w>=10)  return 'Silver';
     return 'Bronze';
   }
+
   function renderLeaderboard(items){
     const meId = getDeviceId();
     if (!Array.isArray(items) || !items.length){
@@ -627,7 +740,14 @@ function requestLeaderboard(){ socket.emit('getLeaderboard'); }
   }
   function toast(msg){ const t=$('toast'); t.textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',2200); }
   function fmt(ms){ const s=Math.ceil(ms/1000); const m=Math.floor(s/60); const r=s%60; return `${String(m).padStart(2,'0')}:${String(r).padStart(2,'0')}`; }
-  function beep(){ if(!SOUND_ENABLED) return; /* son coupé */ }function flash(id){ const el=$(id); if(!el) return; el.style.outline='2px solid #ef4444'; setTimeout(()=>el.style.outline='',150); }
+function beep(){
+  if (typeof SOUND_ENABLED === 'undefined' || !SOUND_ENABLED) return; // son coupé
+  // TODO : jouer un son si tu veux plus tard
+}
+function flash(id){
+  const el = document.getElementById(id); if(!el) return;
+  el.style.outline='2px solid #ef4444'; setTimeout(()=>el.style.outline='',150);
+}
   function updateScoreboard(players){
     const ul=$('score-list'); if(!players||!ul) return;
     ul.innerHTML='';
@@ -995,7 +1115,6 @@ socket.on('timer', ({ phase, leftMs })=>{
 
   // Leaderboard events
   if ($('btn-lb-refresh')) $('btn-lb-refresh').onclick = ()=> socket.emit('getLeaderboard');
-  socket.on('leaderboardData', renderLeaderboard);
 </script>
 </body>
 </html>
