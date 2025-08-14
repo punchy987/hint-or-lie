@@ -13,17 +13,22 @@ const io = new Server(server, { cors: { origin: '*' } });
 let db = null;
 try {
   const admin = require('firebase-admin');
-  if (!admin.apps.length) {
-    if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-      admin.initializeApp({ credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)) });
-    } else {
-      admin.initializeApp();
+
+  // ✅ N'activer Firestore que si la clé est fournie
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    if (!admin.apps.length) {
+      admin.initializeApp({
+        credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT))
+      });
     }
+    db = admin.firestore();
+    var _admin = admin;
+    console.log('[server] Firebase enabled');
+  } else {
+    console.log('[server] Firebase disabled (no FIREBASE_SERVICE_ACCOUNT)');
   }
-  db = admin.firestore();
-  var _admin = admin;
-} catch(e){
-  console.warn('[server] Firebase not configured:', e.message);
+} catch (e) {
+  console.log('[server] Firebase SDK not installed (optional)');
 }
 
 // RP ranked : +3 imposteur gagnant, +1 équipier gagnant, -1 défaite

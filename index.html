@@ -1,10 +1,15 @@
 <!doctype html>
 <html lang="fr">
+  <button id="btn-install" style="display:none">Installer l’app</button>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Hint or Lie · by Mits</title>
   <script src="/socket.io/socket.io.js"></script>
+  <link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#070b14">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
 
   <style>
     :root{
@@ -12,7 +17,7 @@
       --bg: #070b14;
       --card: #0f1523;
       --line: #1b2436;
-      --ink: #e9f0fa;
+      --ink: #021125;
       --muted: #9fb0c5;
       --accent: #36bff8;
       --accent-2: #f43f5e;
@@ -1115,6 +1120,25 @@ socket.on('timer', ({ phase, leftMs })=>{
 
   // Leaderboard events
   if ($('btn-lb-refresh')) $('btn-lb-refresh').onclick = ()=> socket.emit('getLeaderboard');
+   if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    });
+    let deferredPrompt;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;                 // on garde l’événement
+  document.getElementById('btn-install').style.display = 'inline-block';
+});
+
+document.getElementById('btn-install')?.addEventListener('click', async () => {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  await deferredPrompt.userChoice;    // { outcome: 'accepted' | 'dismissed' }
+  deferredPrompt = null;
+  document.getElementById('btn-install').style.display = 'none';
+});
+  }
 </script>
 </body>
 </html>
