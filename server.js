@@ -301,7 +301,7 @@ function pickPairFromDomainsUnique(room) {
   return { common, impostor, domain };
 }
 
-// Tirage "smart" : si des clusters existent pour le thème, on force A vs B (paires proches)
+// Tirage "smart" : 2 mots du MÊME cluster (proches -> imposteur plus discret)
 function pickPairSmart(room){
   room.used ||= {};
   room.lastDomains ||= [];
@@ -309,9 +309,7 @@ function pickPairSmart(room){
 
   const all = Object.keys(DOMAINS);
   const validDomains = all.filter(d => (DOMAINS[d]?.length || 0) >= 2);
-  if (validDomains.length === 0) {
-    return { common:'Erreur', impostor:'Erreur', domain:'Aucun domaine' };
-  }
+  if (!validDomains.length) return { common:'Erreur', impostor:'Erreur', domain:'Aucun domaine' };
 
   const banned = new Set(room.lastDomains.slice(-cooldown));
   const candidates = validDomains.filter(d => !banned.has(d));
@@ -320,38 +318,45 @@ function pickPairSmart(room){
   room.used[domain] ||= new Set();
   const usedSet = room.used[domain];
 
-  const clusters = CLUSTERS[domain];
-  if (clusters && clusters.length >= 2) {
-    // choisit deux clusters distincts
-    let a = pick(clusters), b = pick(clusters), guard = 0;
-    while (b === a && guard++ < 10) b = pick(clusters);
+  const clusters = CLUSTERS?.[domain];
 
-    // filtre les mots déjà utilisés
-    const A = a.filter(w => !usedSet.has(w));
-    const B = b.filter(w => !usedSet.has(w));
-    const poolA = A.length ? A : a.slice();
-    const poolB = B.length ? B : b.slice();
-
-    // common depuis A, en évitant de répéter le dernier common
-    let common = pick(poolA);
-    guard = 0;
-    while (common === room.lastCommon && poolA.length > 1 && guard++ < 10) {
-      common = pick(poolA);
+  if (clusters && clusters.length){
+    // Choisir un cluster avec au moins 2 mots (priorité aux non-utilisés)
+    let cluster = pick(clusters), guard = 0;
+    while (cluster.filter(w => !usedSet.has(w)).length < 2 && guard++ < 20){
+      cluster = pick(clusters);
     }
-    // imposteur depuis B
-    const impostor = pick(poolB);
+    // pool prioritaire = non-utilisés
+    let pool = cluster.filter(w => !usedSet.has(w));
+    if (pool.length < 2) pool = cluster.slice();
+
+    // mot commun (évite de répéter le dernier)
+    let common = pick(pool);
+    guard = 0;
+    while (common === room.lastCommon && pool.length > 1 && guard++ < 10){
+      common = pick(pool);
+    }
+
+    // imposteur ≠ commun
+    let impostorChoices = pool.filter(w => w !== common);
+    if (!impostorChoices.length) impostorChoices = cluster.filter(w => w !== common);
+    const impostor = pick(impostorChoices);
 
     usedSet.add(common); usedSet.add(impostor);
     room.lastCommon = common;
     room.lastDomains.push(domain);
     if (room.lastDomains.length > 5) room.lastDomains.shift();
 
+    // DEBUG (optionnel)
+    // console.log('[pair]', domain, 'cluster=', cluster, '=>', common, impostor);
+
     return { common, impostor, domain };
   }
 
-  // fallback : ancien tirage si pas de clusters
+  // Fallback si aucun cluster défini pour ce domaine
   return pickPairFromDomainsUnique(room);
 }
+
 
 // ===== TIMERS =====
 function clearRoomTimer(room){
@@ -390,30 +395,58 @@ function snapshot(code){
   return { code, state:r.state, round:r.round, players };
 }
 function broadcast(code){ const s = snapshot(code); if (s) io.to(code).emit('roomUpdate', s); }
+// ——— Libellés pour lever les ambiguïtés à l’écran ———
+const CLUSTER_LABELS = {
+  "Fruits Fleurs Légumes": ["(fruit)","(légume)","(fleur)"],
+  "Couleurs Formes": ["(couleur)","(forme)"]
+};
 
-// ===== FLOW DE MANCHE =====
+function labelWordByDomain(word, domain){
+  const clusters = CLUSTERS?.[domain];
+  const labels = CLUSTER_LABELS?.[domain];
+  if (!clusters || !labels) return word;
+  for (let i = 0; i < clusters.length && i < labels.length; i++){
+    if (clusters[i].includes(word)) return `${word} ${labels[i]}`;
+  }
+  return word;
+}
+
+
 function startRound(code){
   const r = rooms.get(code); if(!r) return;
   clearRoomTimer(r);
   r.lobbyReady = new Set();
-  r.readyNext = new Set();
+  r.readyNext  = new Set();
 
   const ids = Array.from(r.players.keys());
-  if (ids.length < 3){ io.to(code).emit('errorMsg','Minimum 3 joueurs'); r.state='lobby'; broadcast(code); return; }
+  if (ids.length < 3){
+    io.to(code).emit('errorMsg','Minimum 3 joueurs');
+    r.state = 'lobby'; broadcast(code); return;
+  }
 
+  // reset manche
   for (const p of r.players.values()){ p.hint=null; p.vote=null; p.isImpostor=false; }
 
+  // Tirage 2 mots du MÊME cluster
   const pair = pickPairSmart(r);
+  r.words = { common:pair.common, impostor:pair.impostor, domain:pair.domain };
   r.lastDomain = pair.domain; r.lastCommon = pair.common;
 
+  // Choix de l'imposteur (fix: impId, pas "implId")
   const impId = pick(ids);
-  r.words = { common:pair.common, impostor:pair.impostor, domain:pair.domain };
-  r.round += 1; r.state='hints';
+  r.impostor = impId;
+  const imp = r.players.get(impId);
+  if (imp) imp.isImpostor = true;
 
+  r.round += 1;
+  r.state = 'hints';
+
+  // Envoi à chacun (fix: p/id n'existaient pas)
   for (const [id,p] of r.players.entries()){
-    p.isImpostor = (id === impId);
+    const myword = p.isImpostor ? r.words.impostor : r.words.common;
     io.to(id).emit('roundInfo', {
-      word: p.isImpostor ? r.words.impostor : r.words.common,
+      word: myword, // brut
+      wordDisplay: labelWordByDomain(myword, r.words.domain), // "Rose (fleur)"
       isImpostor: p.isImpostor,
       domain: r.words.domain
     });
@@ -494,14 +527,16 @@ for (const [id,p] of r.players.entries()) {
 }
 r.state = 'reveal';
   io.to(code).emit('roundResult', {
-    impostorId: impId,
-    impostorName: r.players.get(impId)?.name,
-    common: r.words.common,
-    impostor: r.words.impostor,
-    votes: tally,
-    impostorCaught: caught,
-    domain: r.words.domain
-  });
+  impostorId: impId,
+  impostorName: r.players.get(impId)?.name,
+  common: r.words.common,
+  impostor: r.words.impostor,
+  commonDisplay: labelWordByDomain(r.words.common, r.words.domain),
+  impostorDisplay: labelWordByDomain(r.words.impostor, r.words.domain),
+  votes: tally,
+  impostorCaught: caught,
+  domain: r.words.domain
+});
 
   r.readyNext = new Set();
   io.to(code).emit('readyProgress', { ready: 0, total: r.players.size });
