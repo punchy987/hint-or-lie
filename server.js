@@ -1,11 +1,28 @@
 // ===== HINT OR LIE — SERVEUR SOCKET.IO =====
 
+// ===== HINT OR LIE — SERVEUR SOCKET.IO =====
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 
+// 1) Créer l'app Express
 const app = express();
+
+// 2) Servir le dossier public
+app.use(express.static(path.join(__dirname, 'public')));
+
+// 3) Route racine -> index.html
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// (Optionnel : fallback SPA si tu veux que toute route renvoie index.html)
+// app.get('*', (req, res) => {
+//   res.sendFile(path.join(__dirname, 'public', 'index.html'));
+// });
+
+// 4) Créer le serveur HTTP + Socket.IO
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
