@@ -1,5 +1,5 @@
 // sw.js — très simple cache "app shell" pour Hint or Lie
-const CACHE = 'hol-v2';  // change la version quand tu modifies les assets
+const CACHE = 'hol-v13';  // change la version quand tu modifies les assets
 const ASSETS = ['/', '/index.html']; // ajoute d'autres fichiers statiques si besoin
 
 self.addEventListener('install', (event) => {
