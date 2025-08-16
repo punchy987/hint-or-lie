@@ -17,6 +17,12 @@
   --shadow: rgba(0,0,0,.35);
   --glow: 0 0 40px rgba(206, 17, 17, 0.18); /* halo doux orange */
 }
+/* Fix global de mise en page : les largeurs incluent padding + bordure */
+*, *::before, *::after { box-sizing: border-box; }
+
+/* Sécurité responsive des médias */
+img, svg, canvas, video { max-width: 100%; height: auto; display: block; }
+
 
 /* Fond + étoiles */
 html,body{height:100%}
@@ -494,3 +500,33 @@ body.stars::before{
   padding: 8px 10px;
   font-weight: 800;
 }
+/* === Pastille "Manche" compacte dans la barre de phase === */
+.pill.s{
+  padding: 4px 10px;
+  font-size: 13px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, #1b1422, #14101b);
+  box-shadow: inset 0 0 0 1px #21162b;
+  font-weight: 800;
+  color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.pill.s::before{
+  content:"🔁";
+  filter: drop-shadow(0 0 10px rgba(255,255,255,.05));
+}
+/* HOME — empêcher tout décalage latéral quand c'est étroit */
+#screen-home .row { width: 100%; margin-left: 0; margin-right: 0; }
+#screen-home .tab-pane { padding-left: 12px; padding-right: 12px; }
+
+/* Les entrées/boutons occupent 100% sans déborder */
+#screen-home input,
+#screen-home button { width: 100%; min-width: 0; } /* min-width:0 pour éviter l'élargissement en flex */
+
+
+
+

@@ -20,7 +20,7 @@
   <link rel="apple-touch-icon" href="/icons/icon-192.png">
 </head>
 <body class="stars">
-
+  
   <!-- Bouton PWA -->
   <button id="btn-install" type="button" style="display:none;position:sticky;top:0;width:100%;background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent-2) 35%, var(--accent) 65%));color:#4d0d17;border:0;padding:12px 16px;font-weight:800;">
     Installer l’app
@@ -87,7 +87,7 @@
       </div>
       <div class="rules" id="lb" style="margin-top:10px">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
-          <h4 style="margin:0">Palmarès — Top 50</h4>
+          <h4 style="margin:0">Classement — Top 10</h4>
           <button class="btn-secondary" id="btn-lb-refresh" type="button">Actualiser</button>
         </div>
         <div id="lb-list" class="muted" style="margin-top:8px">Chargement…</div>
@@ -144,6 +144,7 @@
           <span class="theme-chip">📌 Thème : <b id="theme-hint-name">?</b></span>
         </div>
         <div class="phase-right">
+          <div class="pill s" data-role="round">Manche <span class="round-live">0</span></div>
           <span class="kpi" id="timer-hints">00:45</span>
           <span class="kpi" id="progress-hints">0/0</span>
         </div>
@@ -167,6 +168,7 @@
           <span class="theme-chip">📌 Thème : <b id="theme-vote-name">?</b></span>
         </div>
         <div class="phase-right">
+          <div class="pill s" data-role="round">Manche <span class="round-live">0</span></div>
           <span class="kpi" id="timer-vote">00:40</span>
           <span class="kpi" id="progress-vote">0/0</span>
         </div>
@@ -186,6 +188,7 @@
           <span class="theme-chip">📌 Thème : <b id="res-domain">?</b></span>
         </div>
         <div class="phase-right">
+          <div class="pill s" data-role="round">Manche <span class="round-live">0</span></div>
           <span class="kpi" id="timer-reveal">--:--</span>
           <span class="kpi" id="progress-ready">0/0 prêts</span>
         </div>
@@ -577,7 +580,7 @@
     socket.on('lobbyCountdownCancelled', ()=>{
       $('timer-lobby').style.display='none';
       if (myLobbyReady) { myLobbyReady = false; $('btn-ready').textContent = 'Je suis prêt'; }
-      toast('Un joueur a rejoint. Décompte annulé, remettez-vous prêts.');
+      toast('Un joueur a rejoint/quitté.Remettez-vous prêts.');
       lobbyTotalMs = 0; resetPhaseProgress();
     });
 
@@ -693,6 +696,136 @@
   }
   attach();
 })();
+const LIMIT = 10;                 // ← Top 10
+  const KEY = 'holLeaderboard';
+
+  function loadLB(){
+    try { return JSON.parse(localStorage.getItem(KEY) || '[]'); }
+    catch(e){ return []; }
+  }
+  function saveLB(list){
+    localStorage.setItem(KEY, JSON.stringify(list.slice(0, LIMIT)));
+  }
+
+  function updateLocalLB(winners){
+    const lb = loadLB();
+    const byName = new Map(lb.map(e => [e.name, e]));
+    const now = Date.now();
+    for (const w of winners || []) {
+      const name = String(w.name || '').trim() || 'Joueur';
+      const score = Number(w.score || 0);
+      let row = byName.get(name);
+      if (!row) {
+        row = { name, wins: 0, bestScore: 0, last: 0 };
+        byName.set(name, row);
+      }
+      row.wins += 1;
+      if (score > row.bestScore) row.bestScore = score;
+      row.last = now;
+    }
+    const list = Array.from(byName.values())
+      .sort((a,b) => b.wins - a.wins || b.bestScore - a.bestScore || a.name.localeCompare(b.name))
+      .slice(0, LIMIT);
+
+    saveLB(list);
+    renderLocalLB();
+  }
+
+  function renderLocalLB(){
+    const list = loadLB();
+    const box = document.getElementById('lb-list');
+    if (!box) return;
+    if (!list.length) {
+      box.classList.add('muted');
+      box.innerHTML = "Aucun résultat pour l’instant.";
+      return;
+    }
+    box.classList.remove('muted');
+    const rows = list.map((e, i) => `
+      <div class="lb-row">
+        <span class="rank">${i+1}</span>
+        <span class="name">${e.name}</span>
+        <span class="wins">${e.wins} vic.</span>
+        <span class="best">${e.bestScore} pts</span>
+      </div>
+    `).join('');
+    box.innerHTML = `<div class="lb-head">
+        <span class="rank">#</span><span class="name">Joueur</span><span class="wins">Victoires</span><span class="best">Meilleur</span>
+      </div>${rows}`;
+  }
+
+  const btn = document.getElementById('btn-lb-refresh');
+  if (btn) btn.onclick = renderLocalLB;
+
+  if (window.socket) {
+    socket.on('gameOver', ({ winners }) => updateLocalLB(winners));
+  } else {
+    let tries = 0;
+    (function waitSocket(){
+      if (window.socket) return socket.on('gameOver', ({ winners }) => updateLocalLB(winners));
+      if (tries++ < 40) setTimeout(waitSocket, 100);
+    })();
+  }
+
+  renderLocalLB();
+
+  if (navigator.storage && navigator.storage.persist) {
+    navigator.storage.persist().catch(()=>{});
+  }
+/* === Synchro du numéro de manche dans toute l'app === */
+(function(){
+  function setRound(n){
+    // Met à jour toutes les pastilles "round-live"
+    document.querySelectorAll('.round-live').forEach(function(el){
+      el.textContent = (typeof n === 'number' ? n : 0);
+    });
+    // Met aussi à jour le compteur du lobby si présent
+    var l = document.getElementById('round-num');
+    if (l) l.textContent = (typeof n === 'number' ? n : 0);
+  }
+
+  // 1) Au chargement, on affiche 0
+  setRound(0);
+
+  // 2) Écoute les mises à jour de salle (contient round)
+  if (window.socket){
+    socket.on('roomUpdate', function(payload){
+      if (payload && typeof payload.round === 'number') setRound(payload.round);
+    });
+    // (optionnel) si tu émets "phaseProgress" avec round aussi
+    socket.on('phaseProgress', function(payload){
+      if (payload && typeof payload.round === 'number') setRound(payload.round);
+    });
+  } else {
+    // si socket arrive plus tard
+    var tries = 0;
+    (function waitSocket(){
+      if (window.socket) {
+        socket.on('roomUpdate', function(p){ if (p && typeof p.round === 'number') setRound(p.round); });
+        socket.on('phaseProgress', function(p){ if (p && typeof p.round === 'number') setRound(p.round); });
+      } else if (tries++ < 40) setTimeout(waitSocket, 100);
+    })();
+  }
+})();
+</script>
+Le serveur envoie déjà round dans roomUpdate, donc cette pastille se mettra à jour automatiquement dès que la partie progresse.
+
+Bonus (si tu veux pousser le look à l’identique du screenshot)
+Tu peux ajouter une bordure “glow” très légère autour de la barre :
+
+FICHIER : public/style.css
+OÙ : en bas, ajoute :
+
+css
+Copier
+Modifier
+/* Légère lueur autour de la phase bar */
+.phase-bar{
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px rgba(255,255,255,.06), 0 8px 26px rgba(0,0,0,.25);
+  padding: 6px 10px;
+  gap: 8px;
+}
 </script>
 
 </body>
