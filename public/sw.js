@@ -1,5 +1,5 @@
 // sw.js — cache "app shell"
-const CACHE = 'hol-v22';
+const CACHE = 'hol-v25';
 const ASSETS = [
   '/',
   '/index.html',
@@ -9,7 +9,8 @@ const ASSETS = [
   '/icons/icon-192.png',
   '/icons/icon-512.png',
   '/icons/maskable-192.png',
-  '/icons/maskable-512.png'
+  '/icons/maskable-512.png',
+  '/images/background-hero.svg'
 ];
 
 self.addEventListener('install', (event) => {

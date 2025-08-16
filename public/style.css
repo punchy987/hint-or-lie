@@ -2,20 +2,20 @@
   color-scheme: dark;
 
   /* Palette basée sur ton logo */
-  --bg:#0f0b14;
+  --bg:#0f0b14d2;
   --card:#17121f;
-  --line:#2a2135;
+  --line:#489448a8;
 
   --ink:#fff7f1;    /* texte global clair */
   --text:#fff7f1;
   --muted:#bfa8c7;  /* texte secondaire */
 
-  --accent:#FFA84D;   /* orange neutre / CTA par défaut */
-  --accent-2:#FF3B3B; /* rouge imposteur */
-  --accent-3:#7CFF4E; /* vert équipier / succès */
+  --accent:#e26c0cb9;   /* orange neutre / CTA par défaut */
+  --accent-2:#ff3b3baf; /* rouge imposteur */
+  --accent-3:#5bec26a1; /* vert équipier / succès */
 
   --shadow: rgba(0,0,0,.35);
-  --glow: 0 0 40px rgba(255,168,77,.18); /* halo doux orange */
+  --glow: 0 0 40px rgba(206, 17, 17, 0.18); /* halo doux orange */
 }
 
 /* Fond + étoiles */
@@ -24,8 +24,8 @@ body{
   margin:0; color:var(--ink);
   font: 16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial,"Noto Sans";
   background:
-    radial-gradient(1200px 800px at 20% -10%, rgba(255,168,77,.08), transparent 60%),
-    radial-gradient(1200px 800px at 120% 10%, rgba(255,79,79,.08), transparent 60%),
+    radial-gradient(1200px 800px at 20% -10%, rgba(175, 97, 14, 0.644), transparent 60%),
+    radial-gradient(1200px 800px at 120% 10%, rgba(238, 63, 63, 0.08), transparent 60%),
     var(--bg);
   overflow-y:auto;
 }
@@ -343,4 +343,113 @@ button:active{ transform: translateY(1px); }
   pointer-events:none;
   animation: phase-flash .24s ease-out;
 }
+/* === PATCH: layering de la barre de progression === */
+.phase-bar { 
+  position: relative; 
+  isolation: isolate;            /* crée un contexte d’empilement, évite que ::after recouvre le contenu */
+}
+.phase-bar::after { 
+  z-index: 0; 
+  pointer-events: none;          /* ne bloque pas les clics */
+}
+.phase-left,
+.phase-center,
+.phase-right {
+  position: relative;
+  z-index: 1;                    /* les pastilles (rôle / thème / timer) passent au-dessus */
+}
+/* === PATCH: boutons de vote (plus doux) === */
+#vote-buttons button{
+  position: relative;                    /* pour placer le ✓ */
+  background: rgba(124,255,78,.16);      /* vert adouci */
+  color: var(--ink);
+  border: 1px solid rgba(124,255,78,.35);
+  box-shadow: 0 10px 28px rgba(124,255,78,.12);
+  text-align: left;
+  padding: .9rem 2.2rem .9rem 1rem;      /* place pour le ✓ à droite */
+  font-weight: 800;
+  transition: background .15s ease, transform .04s ease, box-shadow .15s ease, outline-color .15s;
+}
+#vote-buttons button:hover{
+  background: rgba(124,255,78,.24);
+  transform: translateY(-1px);
+}
+#vote-buttons button:active{
+  transform: translateY(0);
+}
+#vote-buttons button.selected{
+  background: rgba(124,255,78,.32);
+  outline: 2px solid rgba(124,255,78,.5);
+  box-shadow: 0 12px 32px rgba(124,255,78,.18);
+}
+#vote-buttons button.selected::after{
+  content: '✓';
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-weight: 900;
+}
+#vote-buttons button:disabled{
+  opacity: .6;
+  cursor: default;
+  transform: none;
+  box-shadow: none;
+  outline: none;
+}
+/* === PATCH: flash de fin de timer === */
+@keyframes hol-phase-flash { 
+  0% { opacity: 0 } 
+  50% { opacity: .28 } 
+  100% { opacity: 0 } 
+}
+.flash-now::after{
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: #fff;
+  pointer-events: none;
+  animation: hol-phase-flash .24s ease-out;
+}
+/* === BACKGROUND SVG (plein écran) === */
+:root{
+  --bg-overlay-top: rgba(0,0,0,.45);   /* voile pour lisibilité du texte */
+  --bg-overlay-bottom: rgba(0,0,0,.65);
+}
 
+/* assure que le contenu passe AU-DESSUS du fond */
+.wrap, main, #app, #root { position: relative; z-index: 1; }
+
+body::before{
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;                  /* sous le contenu */
+  pointer-events: none;        /* ne bloque aucun clic */
+  background:
+    radial-gradient(120% 100% at 50% 0%, var(--bg-overlay-top), var(--bg-overlay-bottom)),
+    center / cover no-repeat url("/images/background-hero.svg?v=1");
+  will-change: transform;      /* petit hint perf */
+}
+
+/* (optionnel) recadrage différent mobile */
+@media (max-width: 800px){
+  body::before{
+    background-position: 50% 35%; /* remonte un peu le centre du visuel */
+  }
+}
+
+/* === FORCE BACKGROUND SVG SUR .stars::before === */
+body.stars::before{
+  content:"";
+  position: fixed;
+  inset: 0;
+  z-index: 0;                  /* sous le contenu */
+  pointer-events: none;
+  /* on remplace tout éventuel ancien fond des étoiles */
+  background:
+    radial-gradient(120% 100% at 50% 0%, rgba(0,0,0,.45), rgba(0,0,0,.65)),
+    center / cover no-repeat url("/images/background-hero.svg?v=1") !important;
+  opacity: 1 !important;
+  filter: none !important;
+}
