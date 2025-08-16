@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Hint or Lie · by Mits</title>
+<link rel="prefetch" href="/images/background-hero.svg?v=1" as="image" type="image/svg+xml">
   <!-- Socket.IO -->
   <script src="/socket.io/socket.io.js"></script>
 
@@ -596,6 +597,40 @@
 
     // Refresh leaderboard manual (failsafe)
     $('btn-lb-refresh')?.addEventListener('click', ()=> socket.emit('getLeaderboard'));
-  </script>
+  
+(function(){
+  var flashArmed = false;
+  var lastPhase = null;
+
+  function attach(){
+    if (!window.socket) return setTimeout(attach, 50);  // attend que socket soit dispo
+    socket.on('timer', function(payload){
+      var phase = payload && payload.phase;
+      var leftMs = (payload && payload.leftMs) || 0;
+
+      if (phase !== lastPhase) {
+        lastPhase = phase;
+        flashArmed = false;  // nouvelle phase -> on réarme
+      }
+
+      // déclenche 1 flash en fin de décompte
+      if (leftMs <= 240 && !flashArmed) {
+        flashArmed = true;
+        document.documentElement.classList.add('flash-now');
+        setTimeout(function(){
+          document.documentElement.classList.remove('flash-now');
+        }, 260);
+      }
+
+      // si le timer remonte (nouvelle phase), on réarme
+      if (leftMs > 240) {
+        flashArmed = false;
+      }
+    });
+  }
+  attach();
+})();
+</script>
+
 </body>
 </html>
