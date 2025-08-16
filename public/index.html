@@ -93,6 +93,16 @@
         <div id="lb-list" class="muted" style="margin-top:8px">Chargement…</div>
       </div>
     </div>
+    <!-- Bandeau "Mise à jour disponible" -->
+<div id="update-banner" style="display:none">
+  <div class="update-card">
+    <strong>Nouvelle version disponible</strong>
+    <div class="update-actions">
+      <button id="update-reload" type="button">Mettre à jour</button>
+      <button id="update-dismiss" type="button">Plus tard</button>
+    </div>
+  </div>
+</div>
 
     <!-- LOBBY -->
     <div class="card" id="screen-lobby" style="display:none">
@@ -207,7 +217,67 @@
       if(!id){ id = 'd-' + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem(k,id); }
       return id;
     }
+    (function(){
+  if (!('serviceWorker' in navigator)) return;
 
+  // Enregistre le SW si ce n'est pas déjà fait
+  navigator.serviceWorker.register('/sw.js').then(function(reg){
+    // Si un nouveau SW est trouvé (mise à jour disponible)
+    function onNewServiceWorkerFound(worker){
+      if (!worker) return;
+      worker.addEventListener('statechange', function(){
+        // "installed" + on a déjà un contrôleur => c'est une mise à jour
+        if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+          showUpdateBanner(reg);
+        }
+      });
+    }
+
+    // Cas 1 : le SW est déjà en "waiting" (mise à jour prête)
+    if (reg.waiting) {
+      showUpdateBanner(reg);
+    }
+
+    // Cas 2 : un nouveau SW est en train de s'installer
+    if (reg.installing) {
+      onNewServiceWorkerFound(reg.installing);
+    }
+
+    // Cas 3 : plus tard, un update est trouvé
+    reg.addEventListener('updatefound', function(){
+      onNewServiceWorkerFound(reg.installing);
+    });
+
+    // Optionnel : vérifie régulièrement s'il y a une mise à jour
+    setInterval(function(){ reg.update(); }, 60 * 1000 * 15); // toutes les 15 min
+  });
+
+  // Affiche le bandeau et branche les boutons
+  function showUpdateBanner(reg){
+    var el = document.getElementById('update-banner');
+    var btnReload = document.getElementById('update-reload');
+    var btnDismiss = document.getElementById('update-dismiss');
+    if (!el || !btnReload || !btnDismiss) return;
+
+    el.style.display = 'block';
+
+    btnDismiss.onclick = function(){
+      el.style.display = 'none';
+    };
+
+    btnReload.onclick = function(){
+      // Demande au SW "waiting" de passer actif immédiatement
+      if (reg.waiting) {
+        reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+      }
+    };
+
+    // Quand le contrôleur change => la nouvelle version est active => on recharge
+    navigator.serviceWorker.addEventListener('controllerchange', function(){
+      window.location.reload();
+    }, { once: true });
+  }
+})();
     function tierFromWins(w){
       if (w>=120) return 'Diamond';
       if (w>=60)  return 'Platinum';
@@ -587,13 +657,6 @@
 
     /* Affichage initial */
     show('screen-home');
-
-    /* PWA install & Service Worker */
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
-    }
-    let deferredPrompt; window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredPrompt = e; const btn = $('btn-install'); if (btn) btn.style.display = 'inline-block'; });
-    $('btn-install')?.addEventListener('click', async () => { if (!deferredPrompt) return; deferredPrompt.prompt(); await deferredPrompt.userChoice; deferredPrompt = null; const btn = $('btn-install'); if (btn) btn.style.display = 'none'; });
 
     // Refresh leaderboard manual (failsafe)
     $('btn-lb-refresh')?.addEventListener('click', ()=> socket.emit('getLeaderboard'));
