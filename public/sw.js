@@ -1,5 +1,5 @@
 // sw.js — cache "app shell"
-const CACHE = 'hol-v25';
+const CACHE = 'hol-v26';
 const ASSETS = [
   '/',
   '/index.html',
@@ -12,6 +12,17 @@ const ASSETS = [
   '/icons/maskable-512.png',
   '/images/background-hero.svg'
 ];
+// Permet à la page de dire au Service Worker de passer en "active" tout de suite
+self.addEventListener('message', (event) => {
+  if (event && event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
+// À l'activation, prendre tout de suite le contrôle des pages ouvertes
+self.addEventListener('activate', (event) => {
+  event.waitUntil(self.clients.claim());
+});
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS)));
