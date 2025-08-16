@@ -555,6 +555,7 @@
       else if (phase === 'voting') { const el = $('timer-vote'); if (el) el.textContent = fmt(leftMs); if (left <= 0) { const cont = $('vote-buttons') || document.createElement('div'); Array.from(cont.querySelectorAll('button')).forEach(b => b.disabled = true); } }
       else if (phase === 'prestart') { const el = $('timer-reveal'); if (el) el.textContent = fmt(leftMs); }
       else if (phase === 'lobby') { const el = $('timer-lobby'); if (el) { el.style.display = 'inline-block'; el.textContent = fmt(leftMs); if (left <= 0) el.style.display = 'none'; } }
+    
     });
 
     /* RESULT */

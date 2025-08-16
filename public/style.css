@@ -296,4 +296,51 @@ button:active{ transform: translateY(1px); }
 .theme-chip{
   border-color: color-mix(in srgb, var(--accent) 60%, var(--ink) 40%);
 }
+/* --- Progress header & bar --- */
+.phase-head { position: relative; z-index: 3; } /* les pastilles au-dessus */
+.phase-progress {
+  position: relative;          /* on la met sous les pastilles */
+  height: 8px;
+  margin-top: .8rem;           /* espace pour ne pas toucher les pastilles */
+  background: rgba(255,255,255,.06);
+  border-radius: 999px;
+  overflow: hidden;
+  z-index: 1;
+}
+.phase-progress .bar {
+  height: 100%;
+  width: var(--progress, 0%);  /* tu mets à jour cette var en JS */
+  background: linear-gradient(90deg, var(--accent), #ffc28a);
+  transition: width .2s linear;
+}
+/* --- Vote buttons (calmer) --- */
+.vote-btn {
+  background: rgba(124,255,78,.16);           /* --accent-3 adouci */
+  border: 1px solid rgba(124,255,78,.35);
+  color: #eaffea;
+  border-radius: 14px;
+  padding: .8rem 1.1rem;
+  font-weight: 700;
+  backdrop-filter: blur(2px);
+  transition: background .15s ease, border-color .15s ease, transform .04s ease;
+}
+.vote-btn:hover {
+  background: rgba(124,255,78,.24);
+  border-color: rgba(124,255,78,.5);
+}
+.vote-btn:active { transform: translateY(1px); }
+.vote-btn[aria-pressed="true"],
+.vote-btn.is-selected {
+  background: rgba(124,255,78,.32);
+  border-color: rgba(124,255,78,.6);
+}
+/* --- Flash fin de timer --- */
+@keyframes phase-flash { 0%{opacity:0} 50%{opacity:.28} 100%{opacity:0} }
+.flash-now::after{
+  content:"";
+  position: fixed; inset: 0;
+  background:#fff;
+  pointer-events:none;
+  animation: phase-flash .24s ease-out;
+}
 
