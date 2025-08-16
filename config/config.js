@@ -1,0 +1,5 @@
+module.exports = {
+  HINT_SECONDS: 60,
+  VOTE_SECONDS: 45,
+  LOBBY_READY_SECONDS: 10
+};
