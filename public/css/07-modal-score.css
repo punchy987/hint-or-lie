@@ -1,0 +1,24 @@
+/* Scoreboard */
+#scoreboard{
+  max-width:880px; margin:16px auto 24px; background:#140f1a;
+  border:1px solid var(--line); border-radius:16px; padding:12px; display:none;
+  box-shadow:0 16px 40px rgba(0,0,0,.35);
+}
+#scoreboard ul{ list-style:none; padding:0; margin:0; display:grid; grid-template-columns:1fr auto; row-gap:6px }
+#scoreboard li{ display:contents }
+#scoreboard li span:first-child{ font-weight:700 }
+#scoreboard li span:last-child{
+  justify-self:end;
+  color: color-mix(in srgb, var(--ink) 85%, var(--muted) 15%);
+  font-variant-numeric: tabular-nums;
+  text-align:right;
+}
+
+/* Modal résultat */
+#modal{ position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; align-items:center; justify-content:center; z-index:20 }
+#modal .box{ background:#140f1a; border:1px solid var(--line); border-radius:16px; padding:16px; max-width:360px }
+
+/* Bannières résultat */
+.result-banner{ border:1px solid; border-radius:10px; padding:8px 12px; display:inline-block; margin:6px 0; font-weight:800; background:#140f1a }
+.result-win{ color:var(--accent-3); border-color:rgba(124,255,78,.8); box-shadow:0 0 20px rgba(124,255,78,.25) }
+.result-lose{ color:var(--accent-2); border-color:rgba(255,59,59,.8); box-shadow:0 0 20px rgba(255,59,59,.25) }

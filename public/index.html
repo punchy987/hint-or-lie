@@ -4,24 +4,26 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Hint or Lie · by Mits</title>
-<link rel="prefetch" href="/images/background-hero.svg?v=1" as="image" type="image/svg+xml">
-  <!-- Socket.IO -->
-  <script src="/socket.io/socket.io.js"></script>
 
-  <!-- PWA -->
+  <!-- Perf -->
+  <link rel="prefetch" href="/images/background-hero.svg?v=1" as="image" type="image/svg+xml">
+
+  <!-- Socket.IO (avant nos scripts) -->
+  <script defer src="/socket.io/socket.io.js"></script>
+
+  <!-- PWA & styles -->
   <link rel="manifest" href="/manifest.json">
   <link rel="stylesheet" href="/style.css">
   <meta name="theme-color" content="#0f0b14">
-  <link rel="apple-touch-icon" href="/icons/icon-180.png">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32.png">
   <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
-  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180.png">
 </head>
 <body class="stars">
-  
-  <!-- Bouton PWA -->
+
+  <!-- Bouton d’install PWA (affiché si possible par ton JS si tu veux) -->
   <button id="btn-install" type="button" style="display:none;position:sticky;top:0;width:100%;background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent-2) 35%, var(--accent) 65%));color:#4d0d17;border:0;padding:12px 16px;font-weight:800;">
     Installer l’app
   </button>
@@ -41,7 +43,6 @@
     <!-- HOME -->
     <div class="card" id="screen-home">
       <div class="hero">
-        <!-- ⚡ Remplacement du petit logo bleu: on utilise ton icône -->
         <img src="/icons/icon-192.png" alt="Hint or Lie" style="width:62px;height:62px;flex:0 0 62px;filter: drop-shadow(0 8px 18px rgba(255,168,77,.25));border-radius:14px;object-fit:cover" onerror="this.style.display='none'">
         <div>
           <div class="title-line">
@@ -85,6 +86,7 @@
           <li><strong>Victoire :</strong> premier à <strong>10 points</strong>.</li>
         </ul>
       </div>
+
       <div class="rules" id="lb" style="margin-top:10px">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
           <h4 style="margin:0">Classement — Top 10</h4>
@@ -93,17 +95,6 @@
         <div id="lb-list" class="muted" style="margin-top:8px">Chargement…</div>
       </div>
     </div>
-  
-<!-- Bandeau "Mise à jour disponible" -->
-<div id="update-banner" style="display:none">
-  <div class="update-card">
-    <strong>Nouvelle version disponible</strong>
-    <div class="update-actions">
-      <button id="update-reload" type="button">Mettre à jour</button>
-      <button id="update-dismiss" type="button">Plus tard</button>
-    </div>
-  </div>
-</div>
 
     <!-- LOBBY -->
     <div class="card" id="screen-lobby" style="display:none">
@@ -120,7 +111,6 @@
 
       <div class="row" id="lobby-actions">
         <button id="btn-ready" type="button">Je suis prêt</button>
-        <!-- 🔙 Nouveau: retour à l’accueil pour corriger une mauvaise salle -->
         <button id="btn-back-home" type="button" class="btn-secondary">Retour à l’accueil</button>
       </div>
 
@@ -204,658 +194,30 @@
     </div>
   </div>
 
-  <!-- SCOREBOARD (masqué sur Home & Lobby via JS) -->
+  <!-- SCOREBOARD -->
   <div id="scoreboard">
     <h4>Scores</h4>
     <ul id="score-list"></ul>
   </div>
 
+  <!-- Toast -->
   <p class="muted" id="toast" style="display:none;text-align:center" aria-live="polite"></p>
-  <!-- Bandeau "Mise à jour disponible" -->
-<div id="update-banner" style="display:none">
-  <div class="update-card">
-    <strong>Nouvelle version disponible</strong>
-    <div class="update-actions">
-      <button id="update-reload" type="button">Mettre à jour</button>
-      <button id="update-dismiss" type="button">Plus tard</button>
-    </div>
-  </div>
-</div>
 
-
-  <script>
-    const $ = (id) => document.getElementById(id);
-    const socket = io();
-
-    function getDeviceId(){
-      const k='hol_device'; let id = localStorage.getItem(k);
-      if(!id){ id = 'd-' + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem(k,id); }
-      return id;
-    }
- 
-(function(){
-  if (!('serviceWorker' in navigator)) return;
-
-  function showUpdateBanner(reg){
-    const el = document.getElementById('update-banner');
-    if (!el) return;
-    el.style.display = 'block';
-
-    const btnReload  = document.getElementById('update-reload');
-    const btnDismiss = document.getElementById('update-dismiss');
-
-    btnDismiss && (btnDismiss.onclick = () => { el.style.display = 'none'; });
-
-    btnReload && (btnReload.onclick = () => {
-      // Demande au SW "waiting" de prendre la main tout de suite
-      if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-    });
-
-    // Quand le nouveau SW devient contrôleur -> on recharge la page
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      window.location.reload();
-    }, { once: true });
-  }
-
-  navigator.serviceWorker.register('/sw.js').then((reg) => {
-    // 1) Une MAJ est déjà prête (onglet ouvert pendant le déploiement)
-    if (reg.waiting && navigator.serviceWorker.controller) {
-      showUpdateBanner(reg);
-    }
-
-    // 2) Une MAJ arrive (updatefound -> installed)
-    reg.addEventListener('updatefound', () => {
-      const sw = reg.installing;
-      if (!sw) return;
-      sw.addEventListener('statechange', () => {
-        if (sw.state === 'installed' && navigator.serviceWorker.controller) {
-          showUpdateBanner(reg);
-        }
-      });
-    });
-
-    // 3) On force la détection d’update dès que l’appli revient au premier plan
-    function poke(){ reg.update().catch(()=>{}); }
-    window.addEventListener('focus', poke);
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') poke();
-    });
-    // 4) Vérif périodique (utile en PWA)
-    setInterval(poke, 5 * 60 * 1000);
-  });
-})();
-
-  // Affiche le bandeau et branche les boutons
-  function showUpdateBanner(reg){
-    var el = document.getElementById('update-banner');
-    var btnReload = document.getElementById('update-reload');
-    var btnDismiss = document.getElementById('update-dismiss');
-    if (!el || !btnReload || !btnDismiss) return;
-
-    el.style.display = 'block';
-
-    btnDismiss.onclick = function(){
-      el.style.display = 'none';
-    };
-
-    btnReload.onclick = function(){
-      // Demande au SW "waiting" de passer actif immédiatement
-      if (reg.waiting) {
-        reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-      }
-    };
-
-    // Quand le contrôleur change => la nouvelle version est active => on recharge
-    navigator.serviceWorker.addEventListener('controllerchange', function(){
-      window.location.reload();
-    }, { once: true });
-  }
-    function tierFromWins(w){
-      if (w>=120) return 'Diamond';
-      if (w>=60)  return 'Platinum';
-      if (w>=25)  return 'Gold';
-      if (w>=10)  return 'Silver';
-      return 'Bronze';
-    }
-
-    // Safe element helper
-    function el(tag, text, attrs){
-      const e = document.createElement(tag);
-      if (text != null) e.textContent = String(text);
-      if (attrs) for (const [k,v] of Object.entries(attrs)) e.setAttribute(k,v);
-      return e;
-    }
-
-    // Leaderboard render (safe)
-    function renderLeaderboard(items){
-      const meId = getDeviceId();
-      const box = $('lb-list');
-      if (!Array.isArray(items) || !items.length){
-        if (box) box.textContent = 'Aucun résultat pour l’instant.';
-        return;
-      }
-      const frag = document.createDocumentFragment();
-      const ul = document.createElement('ul');
-      ul.style.listStyle='none'; ul.style.padding='0'; ul.style.margin='0';
-      items.forEach((x, i)=>{
-        const li = document.createElement('li');
-        li.style.display='grid';
-        li.style.gridTemplateColumns='minmax(24px,40px) 1fr auto';
-        li.style.gap='8px';
-        li.style.padding='6px 0';
-
-        const rank = el('span', `#${i+1}`);
-        const mid  = document.createElement('span');
-        const strong = el('strong', x.pseudo || 'Joueur');
-        const pill = el('span', tierFromWins(x.wins||0), { class: 'pill' });
-        pill.style.marginLeft = '6px';
-        mid.appendChild(strong);
-        mid.appendChild(pill);
-        if (x.deviceId === meId) mid.appendChild(el('span',' (toi)'));
-
-        const wins = el('span', `${x.wins||0} victoires`, { class: 'muted' });
-
-        li.appendChild(rank);
-        li.appendChild(mid);
-        li.appendChild(wins);
-        ul.appendChild(li);
-      });
-      frag.appendChild(ul);
-      if (box){ box.innerHTML=''; box.appendChild(frag); }
-    }
-
-    // ===== Leaderboard: bouton + auto-refresh =====
-    function requestLeaderboard(){ socket.emit('getLeaderboard'); }
-
-    (function setupLeaderboardUI(){
-      const btn = $('btn-lb-refresh');
-      if (!btn) return;
-      const original = btn.textContent;
-      let refreshing = false;
-
-      const onData = (items)=>{
-        renderLeaderboard(items);
-        if (refreshing){
-          refreshing = false;
-          btn.disabled = false;
-          btn.textContent = original;
-        }
-      };
-      socket.off?.('leaderboardData', onData);
-      socket.on('leaderboardData', onData);
-
-      btn.onclick = ()=>{
-        if (refreshing) return;
-        refreshing = true;
-        btn.disabled = true;
-        btn.textContent = '...';
-        requestLeaderboard();
-        setTimeout(()=>{
-          if (refreshing){
-            refreshing = false;
-            btn.disabled = false;
-            btn.textContent = original;
-          }
-        }, 1500);
-      };
-
-      let timer = null;
-      const start = ()=>{
-        if (!timer){
-          requestLeaderboard();
-          timer = setInterval(requestLeaderboard, 45000);
-        }
-      };
-      const stop = ()=>{ if (timer){ clearInterval(timer); timer = null; } };
-
-      document.addEventListener('visibilitychange', ()=> document.hidden ? stop() : start());
-      socket.on('connect', start);
-      start();
-    })();
-
-    let me = { id: null, code: null };
-    let room = { players: [], state: 'lobby' };
-    let myIsImpostor = false;
-    let myLobbyReady = false;
-
-    /* ===== Barre de progression fluide (RAF) ===== */
-    const DUR = { hints: 45_000, voting: 40_000, prestart: 3_000 };
-    let lobbyTotalMs = 0;
-    let currentPhase = null;
-    let lastBeepSec = null;
-    let lastBeepAt = 0;
-    let phaseChangeAt = 0;
-
-    function beep(){ /* optionnel */ }
-    function flash(id){ const el = document.getElementById(id); if(!el) return; el.style.outline='2px solid #ef4444'; setTimeout(()=>el.style.outline='',150); }
-
-    function safeBeepOncePerSecond(leftMs){ /* idem */ }
-
-    const phaseAnim = { phase:null, deadline:0, total:0, raf:null };
-    function stopPhaseAnim(){ if (phaseAnim.raf) cancelAnimationFrame(phaseAnim.raf); phaseAnim.raf = null; }
-    function phaseScope(phase){
-      if (phase === 'hints')   return document.querySelector('#screen-hint .phase-bar');
-      if (phase === 'voting')  return document.querySelector('#screen-vote .phase-bar');
-      if (phase === 'prestart')return document.querySelector('#screen-result .phase-bar');
-      if (phase === 'lobby')   return document.querySelector('#screen-lobby .phase-bar');
-      return null;
-    }
-    function tickPhase(){
-      const el = phaseScope(phaseAnim.phase);
-      if (!el) return;
-      const left = Math.max(0, phaseAnim.deadline - Date.now());
-      const pct = Math.max(0, Math.min(1, 1 - (left / phaseAnim.total)));
-      el.style.setProperty('--progress', pct.toFixed(4));
-      if (pct < 1 && phaseAnim.phase) phaseAnim.raf = requestAnimationFrame(tickPhase);
-    }
-    function startPhaseAnim(phase, totalMs, leftMs){
-      if (!phase || !totalMs) return;
-      phaseAnim.phase = phase; phaseAnim.total = totalMs; phaseAnim.deadline = Date.now() + (leftMs ?? totalMs);
-      stopPhaseAnim(); phaseAnim.raf = requestAnimationFrame(tickPhase);
-    }
-    function resetPhaseProgress(){ document.querySelectorAll('.phase-bar').forEach(el=> el.style.setProperty('--progress','0')); stopPhaseAnim(); }
-
-    /* Helpers UI */
-    function show(id){
-      for(const el of document.querySelectorAll('.card')) el.style.display='none';
-      $(id).style.display='block';
-      const sb=$('scoreboard'); if(sb) sb.style.display = (id==='screen-hint'||id==='screen-vote'||id==='screen-result') ? 'block' : 'none';
-      document.body.setAttribute('data-screen', id);
-    }
-    function toast(msg){ const t=$('toast'); t.textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',2200); }
-    function fmt(ms){ const s=Math.ceil(ms/1000); const m=Math.floor(s/60); const r=s%60; return `${String(m).padStart(2,'0')}:${String(r).padStart(2,'0')}`; }
-
-    /* Tabs */
-    const tabs = { join: $('tab-join'), create: $('tab-create') };
-    const panes = { join: $('pane-join'), create: $('pane-create') };
-    function activateTab(which){
-      const isJoin = which === 'join';
-      tabs.join.setAttribute('aria-selected', isJoin ? 'true' : 'false');
-      tabs.create.setAttribute('aria-selected', isJoin ? 'false' : 'true');
-      panes.join.classList.toggle('active', isJoin);
-      panes.create.classList.toggle('active', !isJoin);
-      (isJoin ? $('name-join') : $('name-create'))?.focus();
-    }
-    tabs.join.addEventListener('click', ()=>activateTab('join'));
-    tabs.create.addEventListener('click', ()=>activateTab('create'));
-
-    /* Filtre code */
-    $('join-code')?.addEventListener('input', e=>{ e.target.value = e.target.value.replace(/\D/g,'').slice(0,4); });
-
-    /* Home actions */
-    $('btn-join').onclick=()=>{
-      const name = $('name-join')?.value.trim() || 'Joueur';
-      const code = $('join-code')?.value.trim();
-      const deviceId = getDeviceId();
-      socket.emit('hello', { deviceId, pseudo: name });
-      socket.emit('joinRoom',{code,name,deviceId});
-    };
-    $('btn-create').onclick=()=>{
-      const name=$('name-create')?.value.trim()||'Joueur';
-      const deviceId = getDeviceId();
-      socket.emit('hello', { deviceId, pseudo: name });
-      socket.emit('createRoom',{name,deviceId});
-    };
-
-    /* Toggle règles */
-    $('btn-how').addEventListener('click', ()=>{
-      const panel = $('how');
-      const visible = panel.style.display !== 'none';
-      panel.style.display = visible ? 'none' : 'block';
-      $('btn-how').textContent = visible ? 'Règles rapides' : 'Masquer les règles';
-    });
-
-    /* Lobby */
-    $('btn-ready').onclick=()=>{
-      myLobbyReady = !myLobbyReady;
-      $('btn-ready').textContent = myLobbyReady ? 'Annuler prêt' : 'Je suis prêt';
-      socket.emit('playerReadyLobby', { ready: myLobbyReady });
-    };
-
-    // 🔙 Retour à l’accueil: on demande au serveur de nous retirer de la salle
-    $('btn-back-home').onclick=()=>{
-      socket.emit('leaveRoom');
-      myLobbyReady = false;
-      $('btn-ready').textContent = 'Je suis prêt';
-      show('screen-home');
-    };
-
-    $('btn-next').onclick=()=>{
-      $('btn-next').disabled = true;
-      $('btn-next').textContent = 'Prêt ✓';
-      socket.emit('playerReadyNext');
-    };
-    $('btn-modal-lobby').onclick=()=>{ show('screen-lobby'); $('modal').style.display='none'; };
-
-    /* Hint submit */
-    $('btn-send-hint').onclick=()=>{
-      const hint=$('hint-input').value.trim();
-      if(!hint){ toast('Écris un indice 😉'); return; }
-      socket.emit('submitHint',{hint});
-      $('btn-send-hint').disabled=true;
-      $('hint-input').disabled=true;
-      $('hint-status').textContent="Indice envoyé…";
-    };
-
-    /* ENTER helpers */
-    function onEnter(id, handler){ const el = document.getElementById(id); if(!el) return; el.addEventListener('keydown', (e)=>{ if(e.key === 'Enter'){ e.preventDefault(); handler(); } }); }
-    onEnter('name-join', ()=> $('btn-join')?.click());
-    onEnter('join-code', ()=> $('btn-join')?.click());
-    onEnter('name-create', ()=> $('btn-create')?.click());
-    onEnter('hint-input', ()=>{ const btn = $('btn-send-hint'); const val = $('hint-input')?.value.trim(); if(btn && !btn.disabled && val) btn.click(); });
-
-    /* ENTER global (screens) */
-    document.addEventListener('keydown', (e)=>{
-      if(e.key !== 'Enter') return;
-      const ae = document.activeElement;
-      const typing = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable);
-      if(typing) return;
-
-      const screen = document.body.getAttribute('data-screen');
-      if(screen === 'screen-lobby'){
-        $('btn-ready')?.click();
-      } else if(screen === 'screen-result'){
-        const b = $('btn-next'); if(b && b.style.display !== 'none' && !b.disabled){ b.click(); }
-      } else if(screen === 'screen-home'){
-        const joinPaneActive = $('pane-join')?.classList.contains('active');
-        const primary = joinPaneActive ? $('btn-join') : $('btn-create');
-        primary?.click();
-      } else if(screen === 'screen-vote'){
-        const btn = document.querySelector('#vote-buttons button:not(:disabled)');
-        if(btn) btn.click();
-      }
-    });
-
-    /* ROOM & GAME SOCKETS */
-    socket.on('connect',()=>{ socket.emit('getLeaderboard'); me.id=socket.id; });
-
-    socket.on('roomCreated',({code})=>{
-      me.code=code; $('lobby-code').textContent=code; show('screen-lobby');
-      $('host-badge').style.display='inline-block';
-      myLobbyReady = false; $('btn-ready').textContent = 'Je suis prêt';
-      $('timer-lobby').style.display='none';
-    });
-
-    socket.on('roomJoined',({code})=>{
-      me.code=code; $('lobby-code').textContent=code; show('screen-lobby');
-      myLobbyReady = false; $('btn-ready').textContent = 'Je suis prêt';
-      $('timer-lobby').style.display='none';
-    });
-
-    socket.on('roomUpdate',(snap)=>{
-      room=snap; $('round-num').textContent=snap.round;
-      const list=$('players'); list.innerHTML='';
-      snap.players.forEach(p=>{ const a=document.createElement('div'); a.textContent = p.name; list.appendChild(a); });
-      updateScoreboard(snap.players);
-    });
-
-    function updateScoreboard(players){
-      const ul=$('score-list'); if(!players||!ul) return;
-      ul.innerHTML='';
-      players.slice().sort((a,b)=>b.score-a.score).forEach(p=>{
-        const li=document.createElement('li');
-        const left = el('span', p.name);
-        const right = el('span', String(p.score));
-        li.appendChild(left); li.appendChild(right);
-        ul.appendChild(li);
-      });
-    }
-
-    socket.on('lobbyReadyProgress', ({ ready, total })=>{ const pill = $('lobby-ready-pill'); if (pill) pill.textContent = `${ready}/${total} prêts`; });
-    socket.on('lobbyCountdownStarted', ({ seconds })=>{
-      $('timer-lobby').style.display='inline-block'; toast(`Tout le monde est prêt ! Départ dans ${seconds}s…`);
-      lobbyTotalMs = seconds * 1000; resetPhaseProgress();
-    });
-    socket.on('lobbyCountdownCancelled', ()=>{
-      $('timer-lobby').style.display='none';
-      if (myLobbyReady) { myLobbyReady = false; $('btn-ready').textContent = 'Je suis prêt'; }
-      toast('Un joueur a rejoint/quitté.Remettez-vous prêts.');
-      lobbyTotalMs = 0; resetPhaseProgress();
-    });
-
-    /* PHASE INDICES */
-    socket.on('roundInfo',({word,isImpostor,domain})=>{
-      myIsImpostor = !!isImpostor; show('screen-hint'); resetPhaseProgress();
-      $('theme-hint-name').textContent = domain || '?';
-      const roleEl=$('my-role'); roleEl.textContent=isImpostor?'Tu es IMPOSTEUR':'Tu es Équipier'; roleEl.className='role '+(isImpostor?'imp':'crew');
-      const tip = $('impostor-tip'); if (tip) tip.style.display = isImpostor ? 'block' : 'none';
-      $('hint-instruction').textContent = isImpostor ? "Donne 1 mot qui pourrait coller au thème. 📌" : "Donne 1 mot lié au thème sans le révéler. 📌";
-      $('my-word').textContent=word;
-      $('hint-input').value=''; $('hint-input').disabled=false; $('btn-send-hint').disabled=false; $('hint-status').textContent='';
-      $('timer-vote').textContent='00:40'; $('progress-hints').textContent='0/0'; $('progress-vote').textContent='0/0'; $('timer-reveal').textContent='--:--';
-    });
-    socket.on('hintAck', ()=>{ $('hint-status').textContent="Indice accepté ✓"; });
-    socket.on('hintRejected', ({reason})=>{ $('hint-status').textContent = `Refusé : ${reason}`; $('btn-send-hint').disabled=false; $('hint-input').disabled=false; $('hint-input').focus(); });
-
-    /* PHASE VOTE */
-    socket.on('allHints', ({hints, domain})=>{
-      show('screen-vote'); $('theme-vote-name').textContent = domain || '?'; resetPhaseProgress();
-      const box = $('hints'); box.innerHTML = '';
-      hints.forEach(h=>{ const p = document.createElement('p'); const b = el('strong', h.name); p.appendChild(b); p.appendChild(document.createTextNode(' : ' + (h.hint || ''))); box.appendChild(p); });
-      const cont = $('vote-buttons'); cont.innerHTML = '';
-      let selectedId = null;
-      const renderSelection = ()=>{ Array.from(cont.querySelectorAll('button')).forEach(b=>{ const sel = b.dataset.id === selectedId; b.classList.toggle('selected', sel); b.setAttribute('aria-pressed', sel ? 'true' : 'false'); }); };
-      hints.forEach(h=>{ const btn = document.createElement('button'); btn.type = 'button'; btn.textContent = h.name; btn.dataset.id = h.id; btn.setAttribute('aria-pressed','false'); btn.onclick = ()=>{ selectedId = h.id; renderSelection(); socket.emit('submitVote', { targetId: h.id }); toast('Vote envoyé (modifiable)'); }; cont.appendChild(btn); });
-    });
-
-    /* PROGRESS + LOCK */
-    socket.on('phaseProgress', ({ phase, submitted, total }) => {
-      if (phase === 'hints') {
-        const elp = $('progress-hints'); if (elp) elp.textContent = `${submitted}/${total}`;
-      } else if (phase === 'voting') {
-        const elv = $('progress-vote'); if (elv) elv.textContent = `${submitted}/${total}`;
-        if (submitted === total) { const cont = $('vote-buttons'); if (cont) Array.from(cont.querySelectorAll('button')).forEach(b => b.disabled = true); }
-      }
-    });
-
-    /* Timers pilotés serveur */
-    socket.on('timer', ({ phase, leftMs })=>{
-      if (phase !== currentPhase) { currentPhase = phase; }
-      const totalFor = (ph)=> ph==='hints'?DUR.hints : ph==='voting'?DUR.voting : ph==='prestart'?DUR.prestart : ph==='lobby'?lobbyTotalMs : 0;
-      startPhaseAnim(phase, totalFor(phase), leftMs);
-      const left = Math.floor((leftMs + 20) / 1000);
-      if (phase === 'hints') { const el = $('timer-hints'); if (el) el.textContent = fmt(leftMs); if (left <= 0) { $('btn-send-hint')?.setAttribute('disabled','true'); $('hint-input')?.setAttribute('disabled','true'); } }
-      else if (phase === 'voting') { const el = $('timer-vote'); if (el) el.textContent = fmt(leftMs); if (left <= 0) { const cont = $('vote-buttons') || document.createElement('div'); Array.from(cont.querySelectorAll('button')).forEach(b => b.disabled = true); } }
-      else if (phase === 'prestart') { const el = $('timer-reveal'); if (el) el.textContent = fmt(leftMs); }
-      else if (phase === 'lobby') { const el = $('timer-lobby'); if (el) { el.style.display = 'inline-block'; el.textContent = fmt(leftMs); if (left <= 0) el.style.display = 'none'; } }
-    
-    });
-
-    /* RESULT */
-    socket.on('roundResult',(res)=>{
-      show('screen-result');
-      $('res-domain').textContent=res.domain||'?'; $('res-common').textContent=res.common; $('res-imp').textContent=res.impostor; $('res-imp-name').textContent=res.impostorName||'(?)';
-      let win=false, text=''; if (myIsImpostor){ win=!res.impostorCaught; text=win?'GAGNÉ ✅ Tu es resté discret.':'PERDU ❌ Tu as été repéré.'; } else { win=res.impostorCaught; text=win?'GAGNÉ ✅ L’imposteur a été démasqué.':'PERDU ❌ L’imposteur t’a eu.'; }
-      const banner=$('personal-banner'); banner.textContent=text; banner.className='result-banner '+(win?'result-win':'result-lose');
-      const box=$('res-votes'); box.innerHTML=''; const ul=document.createElement('ul');
-      for(const [tid,c] of Object.entries(res.votes)){ const name=(room.players.find(p=>p.id===tid)||{}).name||tid; const li=document.createElement('li'); li.textContent=`${name} : ${c} vote(s)`; ul.appendChild(li); }
-      box.appendChild(ul);
-      $('btn-next').style.display='block'; $('btn-next').disabled=false; $('btn-next').textContent='Manche suivante';
-      const total=(room.players||[]).length||0; const pr=$('progress-ready'); if(pr) pr.textContent=`0/${total} prêts`; const tr=$('timer-reveal'); if(tr) tr.textContent='--:--';
-    });
-
-    /* Prêt entre manches */
-    socket.on('readyProgress', ({ ready, total }) => { const el = $('progress-ready'); if (el) el.textContent = `${ready}/${total} prêts`; });
-
-    /* Divers */
-    socket.on('gameOver', ({ winners, autoReset })=>{
-      const names=winners.map(w=>`${w.name} (${w.score})`).join(', ');
-      $('winners-text').textContent = winners.length>1 ? `Égalité ! ${names}` : `${names} gagne la partie !`;
-      $('modal').style.display='flex'; show('screen-lobby'); myLobbyReady = false; $('btn-ready').textContent = 'Je suis prêt'; $('timer-lobby').style.display='none'; if (autoReset) toast('Scores réinitialisés automatiquement');
-    });
-    socket.on('scoresReset', ()=>{ toast('Scores remis à 0'); show('screen-lobby'); });
-    socket.on('actionAck', ({ action })=>{ if(action==='startRound') toast('Manche démarrée 🚀'); if(action==='nextRound') toast('Nouvelle manche ➡️'); });
-    socket.on('errorMsg', (m)=>toast(m));
-
-    /* Affichage initial */
-    show('screen-home');
-
-    // Refresh leaderboard manual (failsafe)
-    $('btn-lb-refresh')?.addEventListener('click', ()=> socket.emit('getLeaderboard'));
-  
-(function(){
-  var flashArmed = false;
-  var lastPhase = null;
-
-  function attach(){
-    if (!window.socket) return setTimeout(attach, 50);  // attend que socket soit dispo
-    socket.on('timer', function(payload){
-      var phase = payload && payload.phase;
-      var leftMs = (payload && payload.leftMs) || 0;
-
-      if (phase !== lastPhase) {
-        lastPhase = phase;
-        flashArmed = false;  // nouvelle phase -> on réarme
-      }
-
-      // déclenche 1 flash en fin de décompte
-      if (leftMs <= 240 && !flashArmed) {
-        flashArmed = true;
-        document.documentElement.classList.add('flash-now');
-        setTimeout(function(){
-          document.documentElement.classList.remove('flash-now');
-        }, 260);
-      }
-
-      // si le timer remonte (nouvelle phase), on réarme
-      if (leftMs > 240) {
-        flashArmed = false;
-      }
-    });
-  }
-  attach();
-})();
-const LIMIT = 10;                 // ← Top 10
-  const KEY = 'holLeaderboard';
-
-  function loadLB(){
-    try { return JSON.parse(localStorage.getItem(KEY) || '[]'); }
-    catch(e){ return []; }
-  }
-  function saveLB(list){
-    localStorage.setItem(KEY, JSON.stringify(list.slice(0, LIMIT)));
-  }
-
-  function updateLocalLB(winners){
-    const lb = loadLB();
-    const byName = new Map(lb.map(e => [e.name, e]));
-    const now = Date.now();
-    for (const w of winners || []) {
-      const name = String(w.name || '').trim() || 'Joueur';
-      const score = Number(w.score || 0);
-      let row = byName.get(name);
-      if (!row) {
-        row = { name, wins: 0, bestScore: 0, last: 0 };
-        byName.set(name, row);
-      }
-      row.wins += 1;
-      if (score > row.bestScore) row.bestScore = score;
-      row.last = now;
-    }
-    const list = Array.from(byName.values())
-      .sort((a,b) => b.wins - a.wins || b.bestScore - a.bestScore || a.name.localeCompare(b.name))
-      .slice(0, LIMIT);
-
-    saveLB(list);
-    renderLocalLB();
-  }
-
-  function renderLocalLB(){
-    const list = loadLB();
-    const box = document.getElementById('lb-list');
-    if (!box) return;
-    if (!list.length) {
-      box.classList.add('muted');
-      box.innerHTML = "Aucun résultat pour l’instant.";
-      return;
-    }
-    box.classList.remove('muted');
-    const rows = list.map((e, i) => `
-      <div class="lb-row">
-        <span class="rank">${i+1}</span>
-        <span class="name">${e.name}</span>
-        <span class="wins">${e.wins} vic.</span>
-        <span class="best">${e.bestScore} pts</span>
-      </div>
-    `).join('');
-    box.innerHTML = `<div class="lb-head">
-        <span class="rank">#</span><span class="name">Joueur</span><span class="wins">Victoires</span><span class="best">Meilleur</span>
-      </div>${rows}`;
-  }
-
-  const btn = document.getElementById('btn-lb-refresh');
-  if (btn) btn.onclick = renderLocalLB;
-
-  if (window.socket) {
-    socket.on('gameOver', ({ winners }) => updateLocalLB(winners));
-  } else {
-    let tries = 0;
-    (function waitSocket(){
-      if (window.socket) return socket.on('gameOver', ({ winners }) => updateLocalLB(winners));
-      if (tries++ < 40) setTimeout(waitSocket, 100);
-    })();
-  }
-
-  renderLocalLB();
-
-  if (navigator.storage && navigator.storage.persist) {
-    navigator.storage.persist().catch(()=>{});
-  }
-/* === Synchro du numéro de manche dans toute l'app === */
-(function(){
-  function setRound(n){
-    // Met à jour toutes les pastilles "round-live"
-    document.querySelectorAll('.round-live').forEach(function(el){
-      el.textContent = (typeof n === 'number' ? n : 0);
-    });
-    // Met aussi à jour le compteur du lobby si présent
-    var l = document.getElementById('round-num');
-    if (l) l.textContent = (typeof n === 'number' ? n : 0);
-  }
-
-  // 1) Au chargement, on affiche 0
-  setRound(0);
-
-  // 2) Écoute les mises à jour de salle (contient round)
-  if (window.socket){
-    socket.on('roomUpdate', function(payload){
-      if (payload && typeof payload.round === 'number') setRound(payload.round);
-    });
-    // (optionnel) si tu émets "phaseProgress" avec round aussi
-    socket.on('phaseProgress', function(payload){
-      if (payload && typeof payload.round === 'number') setRound(payload.round);
-    });
-  } else {
-    // si socket arrive plus tard
-    var tries = 0;
-    (function waitSocket(){
-      if (window.socket) {
-        socket.on('roomUpdate', function(p){ if (p && typeof p.round === 'number') setRound(p.round); });
-        socket.on('phaseProgress', function(p){ if (p && typeof p.round === 'number') setRound(p.round); });
-      } else if (tries++ < 40) setTimeout(waitSocket, 100);
-    })();
-  }
-})();
-</script>
-Le serveur envoie déjà round dans roomUpdate, donc cette pastille se mettra à jour automatiquement dès que la partie progresse.
-
-Bonus (si tu veux pousser le look à l’identique du screenshot)
-Tu peux ajouter une bordure “glow” très légère autour de la barre :
-
-FICHIER : public/style.css
-OÙ : en bas, ajoute :
-
-css
-Copier
-Modifier
-/* Légère lueur autour de la phase bar */
-.phase-bar{
-  border-radius: 999px;
-  box-shadow: 0 0 0 1px rgba(255,255,255,.06), 0 8px 26px rgba(0,0,0,.25);
-  padding: 6px 10px;
-  gap: 8px;
-}
-</script>
+  <!-- Scripts: core, features, pwa, boot -->
+  <script defer src="/js/core/dom.js"></script>
+  <script defer src="/js/core/helpers.js"></script>
+  <script defer src="/js/core/state.js"></script>
+  <script defer src="/js/core/socket.js"></script>
+
+  <script defer src="/js/features/home.js"></script>
+  <script defer src="/js/features/hints.js"></script>
+  <script defer src="/js/features/vote.js"></script>
+  <script defer src="/js/features/results.js"></script>
+  <script defer src="/js/features/leaderboard.js"></script>
+
+  <script defer src="/js/pwa/update.js"></script>
+  <script defer src="/js/dev/guard.js"></script>
+  <script defer src="/js/main.js"></script>
 
 </body>
 </html>

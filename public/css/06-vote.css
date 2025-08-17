@@ -1,0 +1,49 @@
+/* Grille des boutons de vote */
+.grid-votes{ display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:8px }
+
+/* Boutons vote (cohérents, lisibles) */
+#vote-buttons button{
+  position:relative;
+  background: rgba(124,255,78,.16);
+  color: var(--ink);
+  border:1px solid rgba(124,255,78,.35);
+  box-shadow: 0 10px 28px rgba(124,255,78,.12);
+  text-align:left;
+  padding:.9rem 2.2rem .9rem 1rem; /* place pour le ✓ à droite */
+  font-weight:800;
+  transition: background .15s ease, transform .04s ease, box-shadow .15s ease, outline-color .15s;
+}
+#vote-buttons button:hover{ background: rgba(124,255,78,.24); transform: translateY(-1px) }
+#vote-buttons button:active{ transform: translateY(0) }
+#vote-buttons button.selected{
+  background: rgba(124,255,78,.32);
+  outline:2px solid rgba(124,255,78,.5);
+  box-shadow:0 12px 32px rgba(124,255,78,.18);
+}
+#vote-buttons button.selected::after{
+  content:'✓'; position:absolute; right:12px; top:50%; transform:translateY(-50%); font-weight:900;
+}
+#vote-buttons button:disabled{ opacity:.6; cursor:default; transform:none; box-shadow:none; outline:none }
+
+/* Variante “carte” douce (si tu utilises .vote-btn) */
+.vote-btn{
+  background: rgba(124,255,78,.16);
+  border:1px solid rgba(124,255,78,.35);
+  color:#eaffea; border-radius:14px; padding:.8rem 1.1rem; font-weight:700;
+  backdrop-filter: blur(2px);
+  transition: background .15s ease, border-color .15s ease, transform .04s ease;
+}
+.vote-btn:hover{ background: rgba(124,255,78,.24); border-color: rgba(124,255,78,.5) }
+.vote-btn:active{ transform: translateY(1px) }
+.vote-btn[aria-pressed="true"], .vote-btn.is-selected{
+  background: rgba(124,255,78,.32); border-color: rgba(124,255,78,.6);
+}
+
+/* Petit tip imposteur (si utilisé) */
+.tip{
+  margin:8px 0 12px; padding:8px 12px;
+  background: linear-gradient(180deg, rgba(255,230,150,.12), rgba(255,230,150,.08));
+  border:1px solid rgba(255,230,150,.35);
+  border-radius:8px; color:#ffe696; font-size:.95rem; font-style:italic;
+  display:none; box-shadow: 0 10px 24px rgba(255,230,150,.08);
+}

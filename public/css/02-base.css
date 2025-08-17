@@ -1,0 +1,65 @@
+/* Fix global de mise en page */
+*, *::before, *::after { box-sizing: border-box; }
+/* Sécurité responsive des médias */
+img, svg, canvas, video { max-width: 100%; height: auto; display: block; }
+
+/* Page */
+html, body {
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: auto;
+  overscroll-behavior-y: auto;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Fond + étoiles */
+body{
+  margin:0; color:var(--ink);
+  font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial,"Noto Sans";
+  background:
+    radial-gradient(1200px 800px at 20% -10%, rgba(175,97,14,.644), transparent 60%),
+    radial-gradient(1200px 800px at 120% 10%, rgba(238,63,63,.08), transparent 60%),
+    var(--bg);
+}
+.stars::before,.stars::after{
+  content:""; position:fixed; inset:-20% -10% -10% -10%; pointer-events:none; z-index:-1;
+  background-image: radial-gradient(#ffffff66 1px, transparent 1px);
+  background-size:3px 3px; opacity:.10; filter:drop-shadow(0 0 2px #ffffff33);
+  animation: drift 160s linear infinite;
+}
+.stars::after{ opacity:.08; background-size:2px 2px; animation-duration:220s; }
+@keyframes drift{ from{transform:translateY(0)} to{transform:translateY(200px)} }
+
+/* Layout générique */
+.wrap{ max-width:880px; margin:0 auto; padding:16px }
+.row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center }
+.muted{ color:var(--muted) }
+h1,h2,h3,h4{ margin:0 0 8px }
+
+/* === BACKGROUND SVG plein écran === */
+:root{
+  --bg-overlay-top: rgba(0,0,0,.45);
+  --bg-overlay-bottom: rgba(0,0,0,.65);
+}
+/* assure que le contenu passe AU-DESSUS du fond */
+.wrap, main, #app, #root { position: relative; z-index: 1; }
+
+body::before{
+  content:""; position:fixed; inset:0; z-index:0; pointer-events:none;
+  background:
+    radial-gradient(120% 100% at 50% 0%, var(--bg-overlay-top), var(--bg-overlay-bottom)),
+    center / cover no-repeat url("/images/background-hero.svg?v=1");
+  will-change: transform;
+}
+@media (max-width:800px){
+  body::before{ background-position: 50% 35%; }
+}
+/* FORCE le background si classe .stars présente */
+body.stars::before{
+  content:""; position:fixed; inset:0; z-index:0; pointer-events:none;
+  background:
+    radial-gradient(120% 100% at 50% 0%, rgba(0,0,0,.45), rgba(0,0,0,.65)),
+    center / cover no-repeat url("/images/background-hero.svg?v=1") !important;
+  opacity:1 !important; filter:none !important;
+}

@@ -1,0 +1,19 @@
+:root{
+  color-scheme: dark;
+
+  /* Palette basée sur ton logo */
+  --bg:#0f0b14d2;
+  --card:#17121f;
+  --line:#489448a8;
+
+  --ink:#fff7f1;    /* texte global clair */
+  --text:#fff7f1;
+  --muted:#bfa8c7;  /* texte secondaire */
+
+  --accent:#e26c0cb9;   /* orange neutre / CTA par défaut */
+  --accent-2:#ff3b3baf; /* rouge imposteur */
+  --accent-3:#5bec26a1; /* vert équipier / succès */
+
+  --shadow: rgba(0,0,0,.35);
+  --glow: 0 0 40px rgba(206, 17, 17, 0.18); /* halo doux orange */
+}

@@ -1,8 +1,15 @@
-// --- sockets/timer.js ---
+// routes/sockets/timer.js
 const path = require('path');
+
+// ✅ chemin corrigé: state/room.js
 const { rooms: _rooms } =
-  require(path.join(__dirname, 'state', 'rooms.js'));
-function clearRoomTimer(room){ if (room?.timer?.interval) clearInterval(room.timer.interval); if (room) room.timer = { interval:null, deadline:0, phase:null }; }
+  require(path.join(__dirname, 'state', 'room.js'));
+
+function clearRoomTimer(room){
+  if (room?.timer?.interval) clearInterval(room.timer.interval);
+  if (room) room.timer = { interval:null, deadline:0, phase:null };
+}
+
 function startPhaseTimer(io, code, seconds, phase, onExpire){
   const room = _rooms.get(code); if(!room) return;
   clearRoomTimer(room);
@@ -14,4 +21,5 @@ function startPhaseTimer(io, code, seconds, phase, onExpire){
     if (leftMs <= 0){ clearRoomTimer(room); onExpire?.(); }
   }, 500);
 }
+
 module.exports = { clearRoomTimer, startPhaseTimer };

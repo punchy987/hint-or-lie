@@ -1,5 +1,35 @@
 # Hint or Lie - Règles et fonctionnement
 
+.
+├─ server.js                      ← Entrée serveur (Express + Socket.io)
+├─ package.json
+├─ config/
+│  ├─ config.js                   ← (optionnel) constantes/flags
+│  ├─ firebase.js                 ← (optionnel) persistance Firebase
+│  └─ index.js                    ← (si présent) export de la config
+├─ routes/
+│  ├─ index.js                    ← (si présent) endpoints HTTP simples
+│  └─ sockets/
+│     ├─ index.js                ← montage des namespaces/handlers Socket.io
+│     ├─ timer.js                ← start/clear des timers de phase (indices/vote)
+│     ├─ persistence.js          ← (optionnel) upsert des résultats (ex: Firebase)
+│     ├─ state/
+│     │   └─ rooms.js           ← état des salles & snapshot public
+│     └─ game/
+│         ├─ controller.js      ← cœur du jeu: startRound, maybeStartVoting, finishVoting
+│         ├─ picker.js          ← choix des mots (imposteur/communs)
+│         ├─ clusters.js        ← (recommandé) groupes de mots *proches* par thème
+│         └─ words.js           ← utilitaires d’affichage (ex: labelWordByDomain)
+├─ public/
+│  ├─ index.html                 ← page client (UI)
+│  ├─ style.css                  ← styles globaux (thème, responsive)
+│  ├─ sw.js                      ← Service Worker (PWA, cache, update banner)
+│  ├─ manifest.json              ← PWA manifest (nom, icônes)
+│  ├─ icons/                     ← icônes PWA (192/512…)
+│  └─ images/                    ← images statiques (ex: background-hero.svg)
+└─ screenshots/                  ← images de doc (non utilisées par l’app)
+
+
 ## Présentation
 Hint or Lie est un jeu multijoueur en ligne de déduction et de bluff.
 Chaque partie oppose des équipiers à un imposteur caché.  

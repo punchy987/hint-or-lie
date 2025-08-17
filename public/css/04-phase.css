@@ -1,0 +1,79 @@
+/* Pastilles / KPI */
+.kpi{
+  min-width:66px; text-align:center; padding:6px 10px; border-radius:8px; border:1px solid var(--line);
+  background:#140f1a; font-weight:800; color:#ffeef0; box-shadow: inset 0 0 0 1px #21162b;
+}
+/* Un poil plus lisible */
+.kpi{ border-color: color-mix(in srgb, var(--line) 70%, var(--ink) 30%) }
+
+/* Barre de phase (rôle / thème / timer) — progress piloté par --progress */
+.phase-bar{
+  display:grid; grid-template-columns:1fr minmax(320px,1.6fr) 1fr;
+  align-items:center; gap:12px; border:1px solid var(--line);
+  border-radius:12px; padding:10px 12px;
+  background:linear-gradient(180deg,#1b1422,#14101b);
+  box-shadow: inset 0 0 0 1px #21162b; margin-bottom:10px;
+  position:relative; overflow:hidden;
+  isolation:isolate;            /* contexte d’empilement local */
+}
+
+/* --- PROGRESSION : calque derrière tout le contenu --- */
+.phase-bar::after{
+  content:""; position:absolute; inset:0;
+  transform-origin:left center; transform:scaleX(var(--progress,0));
+  background: linear-gradient(90deg, rgba(255,168,77,.25), rgba(255,59,59,.25));
+  /* IMPORTANT: on enlève le mix-blend pour ne plus “teinter” les pastilles au-dessus */
+  mix-blend-mode: normal;
+  pointer-events:none; z-index:0;  /* derrière */
+}
+
+/* Tous les enfants visibles de .phase-bar passent au-dessus de la progression */
+.phase-bar > *:not(.phase-progress){
+  position:relative;
+  z-index:2;
+}
+
+/* Alias spécifiques */
+.phase-left,.phase-center,.phase-right{ position:relative; z-index:2; }
+.phase-left,.phase-center,.phase-right{ min-width:0 } /* accessibilité */
+
+/* Barre de progression indépendante (celle du dessous) */
+.phase-head{ position:relative; z-index:3 }
+.phase-progress{
+  position:relative; height:8px; margin-top:.8rem;
+  background:rgba(255,255,255,.06); border-radius:999px; overflow:hidden;
+  z-index:0;                    /* derrière les éléments interactifs */
+  pointer-events:none;          /* ne bloque aucun clic */
+}
+.phase-progress .bar{
+  height:100%; width:calc(var(--progress, 0) * 100%);
+  background: linear-gradient(90deg, var(--accent), #ffc28a);
+  transition: width .2s linear;
+}
+
+/* Flash fin de timer (option) */
+@keyframes hol-phase-flash{ 0%{opacity:0} 50%{opacity:.28} 100%{opacity:0} }
+.flash-now::after{
+  content:""; position:fixed; inset:0; background:#fff; pointer-events:none; animation:hol-phase-flash .24s ease-out;
+}
+
+/* Pastille "Manche" compacte */
+.pill.s{
+  padding:4px 10px; font-size:13px; border-radius:999px;
+  border:1px solid var(--line); background:linear-gradient(180deg,#1b1422,#14101b);
+  box-shadow: inset 0 0 0 1px #21162b; font-weight:800; color:var(--ink);
+  display:inline-flex; align-items:center; gap:6px; white-space:nowrap;
+}
+.pill.s::before{ content:"🔁"; filter: drop-shadow(0 0 10px rgba(255,255,255,.05)) }
+
+/* === Phase bar spacing dans les cartes === */
+
+/* Quand la phase-bar est le 1er élément d’une carte, on ménage un petit espace en haut */
+.card > .phase-bar:first-child{
+  margin-top: 8px;
+}
+
+/* Un peu d’air dessous pour ne pas coller le contenu qui suit */
+.phase-bar + *{
+  margin-top: 10px;
+}

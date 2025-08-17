@@ -1,0 +1,188 @@
+// public/js/features/home.js
+// Accueil / Lobby / Navigation de base
+(function () {
+  const { $, el, onEnter, show, toast, getDeviceId, state, updateScoreboard, socket } = window.HOL;
+
+  // Onglets Rejoindre / Créer
+  function initTabs() {
+    const tabs = { join: $('tab-join'), create: $('tab-create') };
+    const panes = { join: $('pane-join'), create: $('pane-create') };
+
+    function activateTab(which) {
+      const isJoin = which === 'join';
+      tabs.join?.setAttribute('aria-selected', isJoin ? 'true' : 'false');
+      tabs.create?.setAttribute('aria-selected', isJoin ? 'false' : 'true');
+      panes.join?.classList.toggle('active', isJoin);
+      panes.create?.classList.toggle('active', !isJoin);
+      (isJoin ? $('name-join') : $('name-create'))?.focus();
+    }
+
+    tabs.join?.addEventListener('click', () => activateTab('join'));
+    tabs.create?.addEventListener('click', () => activateTab('create'));
+    // filtre du code (4 chiffres)
+    $('join-code')?.addEventListener('input', e => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 4); });
+  }
+
+  function initHomeActions() {
+    $('btn-join').onclick = () => {
+      const name = $('name-join')?.value.trim() || 'Joueur';
+      const code = ($('join-code')?.value.trim() || '').replace(/\D/g, '').slice(0, 4);
+      if (code.length !== 4) { toast('Code à 4 chiffres requis.'); return; }
+      const deviceId = getDeviceId();
+
+      console.log('[emit] hello', { deviceId, pseudo: name });
+      socket.emit('hello', { deviceId, pseudo: name, name });
+
+      console.log('[emit] joinRoom', { code, pseudo: name, deviceId });
+      socket.emit('joinRoom', { code, pseudo: name, name, deviceId });
+
+      setTimeout(() => {
+        if (!window.HOL?.state?.me?.code) toast('Pas de réponse du serveur pour “Rejoindre”. Vérifie la connexion.');
+      }, 2000);
+    };
+
+    $('btn-create').onclick = () => {
+      const name = $('name-create')?.value.trim() || 'Joueur';
+      const deviceId = getDeviceId();
+
+      console.log('[emit] hello', { deviceId, pseudo: name });
+      socket.emit('hello', { deviceId, pseudo: name, name });
+
+      console.log('[emit] createRoom', { pseudo: name, name, deviceId });
+      socket.emit('createRoom', { pseudo: name, name, deviceId });
+
+      setTimeout(() => {
+        if (!window.HOL?.state?.me?.code) toast('Pas de réponse du serveur pour “Créer une salle”.');
+      }, 2000);
+    };
+
+    // Règles
+    $('btn-how')?.addEventListener('click', () => {
+      const panel = $('how');
+      const visible = panel.style.display !== 'none';
+      panel.style.display = visible ? 'none' : 'block';
+      $('btn-how').textContent = visible ? 'Règles rapides' : 'Masquer les règles';
+    });
+
+    // Lobby: prêt / retour accueil
+    $('btn-ready')?.addEventListener('click', () => {
+      state.myLobbyReady = !state.myLobbyReady;
+      $('btn-ready').textContent = state.myLobbyReady ? 'Annuler prêt' : 'Je suis prêt';
+      socket.emit('playerReadyLobby', { ready: state.myLobbyReady });
+    });
+
+    $('btn-back-home')?.addEventListener('click', () => {
+      socket.emit('leaveRoom');
+      state.myLobbyReady = false;
+      const br = $('btn-ready'); if (br) br.textContent = 'Je suis prêt';
+      show('screen-home');
+    });
+
+    onEnter('name-join', () => $('btn-join')?.click());
+    onEnter('join-code', () => $('btn-join')?.click());
+    onEnter('name-create', () => $('btn-create')?.click());
+  }
+
+  function initSocketRoom() {
+    const s = socket;
+
+    s.on('connect', () => {
+      s.emit('getLeaderboard');
+      state.me.id = s.id;
+      console.log('socket connected', s.id);
+    });
+
+    // Debug global des events reçus (fix: plus de ".args")
+    if (s.onAny) {
+      s.onAny((event, ...args) => console.log('⟵', event, ...args));
+    }
+
+    const onCreated = ({ code }) => {
+      state.me.code = code;
+      $('lobby-code').textContent = code;
+      show('screen-lobby');
+      const hb = $('host-badge'); if (hb) hb.style.display = 'inline-block';
+      state.myLobbyReady = false;
+      const br = $('btn-ready'); if (br) br.textContent = 'Je suis prêt';
+      const tl = $('timer-lobby'); if (tl) tl.style.display = 'none';
+      console.log('[ui] entered lobby as host', { code });
+    };
+    s.on('roomCreated', onCreated);
+    s.on('createdRoom', onCreated);
+    s.on('room:create:ok', onCreated);
+
+    const onJoined = ({ code }) => {
+      state.me.code = code;
+      $('lobby-code').textContent = code;
+      show('screen-lobby');
+      state.myLobbyReady = false;
+      const br = $('btn-ready'); if (br) br.textContent = 'Je suis prêt';
+      const tl = $('timer-lobby'); if (tl) tl.style.display = 'none';
+      console.log('[ui] entered lobby as guest', { code });
+    };
+    s.on('roomJoined', onJoined);
+    s.on('joinedRoom', onJoined);
+    s.on('room:join:ok', onJoined);
+
+    s.on('roomError', ({ message }) => toast(message || 'Erreur de salle.'));
+    s.on('errorMsg', (m) => toast(m));
+
+    s.on('roomUpdate', (snap) => {
+      state.room = snap;
+      $('round-num').textContent = snap.round;
+      const list = $('players'); if (list) { list.innerHTML = ''; }
+      snap.players.forEach(p => {
+        const a = document.createElement('div');
+        a.textContent = p.name;
+        list.appendChild(a);
+      });
+      updateScoreboard(snap.players);
+    });
+
+    s.on('lobbyReadyProgress', ({ ready, total }) => {
+      const pillLobby = $('lobby-ready-pill');
+      if (pillLobby) pillLobby.textContent = `${ready}/${total} prêts`;
+      const pillResult = $('progress-ready');
+      if (pillResult) pillResult.textContent = `${ready}/${total} prêts`;
+    });
+
+    s.on('lobbyCountdownStarted', ({ seconds }) => {
+      const el = $('timer-lobby');
+      if (el) { el.style.display = 'inline-block'; el.textContent = `00:${String(seconds).padStart(2, '0')}`; }
+    });
+
+    s.on('lobbyCountdownCancelled', () => {
+      const el = $('timer-lobby'); if (el) el.style.display = 'none';
+    });
+  }
+
+  function initGlobalEnter() {
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      const ae = document.activeElement;
+      const typing = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable);
+      if (typing) return;
+
+      const screen = document.body.getAttribute('data-screen');
+      if (screen === 'screen-lobby') $('btn-ready')?.click();
+      else if (screen === 'screen-result') { const b = $('btn-next'); if (b && b.style.display !== 'none' && !b.disabled) b.click(); }
+      else if (screen === 'screen-home') {
+        const joinPaneActive = $('pane-join')?.classList.contains('active');
+        const primary = joinPaneActive ? $('btn-join') : $('btn-create'); primary?.click();
+      } else if (screen === 'screen-vote') {
+        const btn = document.querySelector('#vote-buttons button:not(:disabled)');
+        if (btn) btn.click();
+      }
+    });
+  }
+
+  function init() {
+    initTabs();
+    initHomeActions();
+    initSocketRoom();
+    initGlobalEnter();
+  }
+
+  window.HOL.features = window.HOL.features || {};
+  window.HOL.features.home = { init };
+})();
