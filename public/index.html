@@ -210,6 +210,17 @@
   </div>
 
   <p class="muted" id="toast" style="display:none;text-align:center" aria-live="polite"></p>
+  <!-- Bandeau "Mise à jour disponible" -->
+<div id="update-banner" style="display:none">
+  <div class="update-card">
+    <strong>Nouvelle version disponible</strong>
+    <div class="update-actions">
+      <button id="update-reload" type="button">Mettre à jour</button>
+      <button id="update-dismiss" type="button">Plus tard</button>
+    </div>
+  </div>
+</div>
+
 
   <script>
     const $ = (id) => document.getElementById(id);
@@ -220,7 +231,8 @@
       if(!id){ id = 'd-' + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem(k,id); }
       return id;
     }
-    (function(){
+ 
+(function(){
   if (!('serviceWorker' in navigator)) return;
 
   function showUpdateBanner(reg){
@@ -232,47 +244,40 @@
     var btnDismiss = document.getElementById('update-dismiss');
 
     btnDismiss && (btnDismiss.onclick = function(){ el.style.display = 'none'; });
-
-    btnReload && (btnReload.onclick = function(){
+    btnReload  && (btnReload.onclick  = function(){
       if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
     });
 
-    // Quand la nouvelle version devient contrôleur → on recharge
     navigator.serviceWorker.addEventListener('controllerchange', function(){
       window.location.reload();
     }, { once: true });
   }
 
   navigator.serviceWorker.register('/sw.js').then(function(reg){
-    // 1) Si une MAJ est déjà prête
+    // MAJ déjà prête
     if (reg.waiting && navigator.serviceWorker.controller) {
       showUpdateBanner(reg);
     }
 
-    // 2) Si une MAJ arrive
+    // MAJ détectée
     reg.addEventListener('updatefound', function(){
-      var newSW = reg.installing;
-      if (!newSW) return;
-      newSW.addEventListener('statechange', function(){
-        if (newSW.state === 'installed' && navigator.serviceWorker.controller){
+      var sw = reg.installing;
+      if (!sw) return;
+      sw.addEventListener('statechange', function(){
+        if (sw.state === 'installed' && navigator.serviceWorker.controller) {
           showUpdateBanner(reg);
         }
       });
     });
 
-    // 3) Forcer la recherche d’update quand l’app revient au 1er plan
-    function pokeUpdate(){
-      reg.update().catch(()=>{});
-    }
-    document.addEventListener('visibilitychange', function(){
-      if (document.visibilityState === 'visible') pokeUpdate();
-    });
-    window.addEventListener('focus', pokeUpdate);
-
-    // 4) Vérifier régulièrement (PWA / Safari iOS aime bien qu’on insiste)
-    setInterval(pokeUpdate, 5 * 60 * 1000); // toutes les 5 minutes
+    // Vérifier régulièrement + au retour au premier plan (mobile/PWA)
+    function poke(){ reg.update().catch(()=>{}); }
+    document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'visible') poke(); });
+    window.addEventListener('focus', poke);
+    setInterval(poke, 5 * 60 * 1000);
   });
 })();
+
 
   // Affiche le bandeau et branche les boutons
   function showUpdateBanner(reg){

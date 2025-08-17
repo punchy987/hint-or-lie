@@ -1,5 +1,5 @@
 // sw.js — cache "app shell"
-const CACHE = 'hol-v29';
+const CACHE = 'hol-v30';
 const ASSETS = [
   '/',
   '/index.html',

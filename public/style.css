@@ -530,3 +530,16 @@ body.stars::before{
 
 
 
+/* === Bandeau mise à jour PWA === */
+#update-banner{ position:fixed; left:50%; bottom:18px; transform:translateX(-50%); z-index:9999; }
+#update-banner .update-card{
+  display:flex; align-items:center; gap:12px;
+  background: rgba(20,20,30,.9);
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:14px; padding:10px 14px;
+  box-shadow:0 12px 32px rgba(0,0,0,.35); backdrop-filter: blur(4px);
+  color:#fff; font-weight:700;
+}
+#update-banner .update-actions{ display:flex; gap:8px; margin-left:10px; }
+#update-reload{ background:#33d17a; color:#0b0f14; border:none; border-radius:10px; padding:8px 10px; font-weight:900; }
+#update-dismiss{ background:transparent; color:#cfd7df; border:1px solid rgba(255,255,255,.18); border-radius:10px; padding:8px 10px; font-weight:800; }
