@@ -93,7 +93,8 @@
         <div id="lb-list" class="muted" style="margin-top:8px">Chargement…</div>
       </div>
     </div>
-    <!-- Bandeau "Mise à jour disponible" -->
+  
+<!-- Bandeau "Mise à jour disponible" -->
 <div id="update-banner" style="display:none">
   <div class="update-card">
     <strong>Nouvelle version disponible</strong>
@@ -236,48 +237,53 @@
   if (!('serviceWorker' in navigator)) return;
 
   function showUpdateBanner(reg){
-    var el = document.getElementById('update-banner');
+    const el = document.getElementById('update-banner');
     if (!el) return;
     el.style.display = 'block';
 
-    var btnReload = document.getElementById('update-reload');
-    var btnDismiss = document.getElementById('update-dismiss');
+    const btnReload  = document.getElementById('update-reload');
+    const btnDismiss = document.getElementById('update-dismiss');
 
-    btnDismiss && (btnDismiss.onclick = function(){ el.style.display = 'none'; });
-    btnReload  && (btnReload.onclick  = function(){
+    btnDismiss && (btnDismiss.onclick = () => { el.style.display = 'none'; });
+
+    btnReload && (btnReload.onclick = () => {
+      // Demande au SW "waiting" de prendre la main tout de suite
       if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
     });
 
-    navigator.serviceWorker.addEventListener('controllerchange', function(){
+    // Quand le nouveau SW devient contrôleur -> on recharge la page
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
       window.location.reload();
     }, { once: true });
   }
 
-  navigator.serviceWorker.register('/sw.js').then(function(reg){
-    // MAJ déjà prête
+  navigator.serviceWorker.register('/sw.js').then((reg) => {
+    // 1) Une MAJ est déjà prête (onglet ouvert pendant le déploiement)
     if (reg.waiting && navigator.serviceWorker.controller) {
       showUpdateBanner(reg);
     }
 
-    // MAJ détectée
-    reg.addEventListener('updatefound', function(){
-      var sw = reg.installing;
+    // 2) Une MAJ arrive (updatefound -> installed)
+    reg.addEventListener('updatefound', () => {
+      const sw = reg.installing;
       if (!sw) return;
-      sw.addEventListener('statechange', function(){
+      sw.addEventListener('statechange', () => {
         if (sw.state === 'installed' && navigator.serviceWorker.controller) {
           showUpdateBanner(reg);
         }
       });
     });
 
-    // Vérifier régulièrement + au retour au premier plan (mobile/PWA)
+    // 3) On force la détection d’update dès que l’appli revient au premier plan
     function poke(){ reg.update().catch(()=>{}); }
-    document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'visible') poke(); });
     window.addEventListener('focus', poke);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') poke();
+    });
+    // 4) Vérif périodique (utile en PWA)
     setInterval(poke, 5 * 60 * 1000);
   });
 })();
-
 
   // Affiche le bandeau et branche les boutons
   function showUpdateBanner(reg){

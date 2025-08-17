@@ -1,44 +1,81 @@
-// sw.js — cache "app shell"
-const CACHE = 'hol-v30';
+// --- Service Worker (Hint or Lie) ---
+// BUMP ICI à chaque déploiement
+const CACHE = 'hol-v31';
+
+// Liste des assets critiques à pré-cacher
+// -> adapte si tu as d’autres fichiers critiques
 const ASSETS = [
-  '/',
+  '/',                // navigation
   '/index.html',
   '/style.css',
-  '/manifest.json',
-  '/sw.js',
+  // '/client.js',    // dé-commente si tu as un JS global
+  '/images/background-hero.svg', // ton fond
   '/icons/icon-192.png',
   '/icons/icon-512.png',
-  '/icons/maskable-192.png',
-  '/icons/maskable-512.png',
-  '/images/background-hero.svg'
+  '/manifest.json'
 ];
-// Permet à la page de dire au Service Worker de passer en "active" tout de suite
-self.addEventListener('message', (event) => {
-  if (event && event.data && event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting();
-  }
-});
 
-// À l'activation, prendre tout de suite le contrôle des pages ouvertes
-self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
-});
-
+// Install : pré-cache + remplace l’ancien SW dès qu’il est prêt
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS)));
+  event.waitUntil(
+    caches.open(CACHE).then((cache) => cache.addAll(ASSETS))
+  );
+  self.skipWaiting(); // ⚡ passe direct en "waiting"
 });
 
+// Activate : supprime les vieux caches + prend le contrôle immédiat
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+    caches.keys().then((keys) =>
+      Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
+    )
   );
+  self.clients.claim(); // ⚡ contrôle immédiat des pages
 });
 
+// Réception du message "SKIP_WAITING" (clic sur "Mettre à jour")
+self.addEventListener('message', (event) => {
+  if (event?.data?.type === 'SKIP_WAITING') self.skipWaiting();
+});
+
+// Stratégies de cache équilibrées
 self.addEventListener('fetch', (event) => {
   const req = event.request;
-  const url = new URL(req.url);
-  if (req.method !== 'GET') return;           // laisse passer POST, etc.
-  if (url.pathname.startsWith('/socket.io/')) return; // laisse passer Socket.IO
 
-  event.respondWith(caches.match(req).then((hit) => hit || fetch(req)));
+  // 1) Navigations (index.html) -> network-first (toujours tenter la dernière version)
+  if (req.mode === 'navigate') {
+    event.respondWith((async () => {
+      try {
+        const fresh = await fetch(req);
+        const cache = await caches.open(CACHE);
+        cache.put('/', fresh.clone());
+        return fresh;
+      } catch {
+        const cache = await caches.open(CACHE);
+        return (await cache.match('/')) || Response.error();
+      }
+    })());
+    return;
+  }
+
+  // 2) CSS/JS -> stale-while-revalidate (rapide ET à jour en arrière-plan)
+  if (req.destination === 'style' || req.destination === 'script') {
+    event.respondWith((async () => {
+      const cache = await caches.open(CACHE);
+      const cached = await cache.match(req);
+      const fetching = fetch(req).then((res) => {
+        cache.put(req, res.clone());
+        return res;
+      }).catch(() => undefined);
+      return cached || fetching || fetch(req);
+    })());
+    return;
+  }
+
+  // 3) Images/icônes/autres -> cache-first
+  event.respondWith((async () => {
+    const cache = await caches.open(CACHE);
+    const cached = await cache.match(req);
+    return cached || fetch(req);
+  })());
 });
