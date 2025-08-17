@@ -6,18 +6,19 @@ const path = require('path');
 const { HINT_SECONDS, VOTE_SECONDS, LOBBY_READY_SECONDS } =
   require(path.join(__dirname, '..', '..', 'config', 'index.js'));
 
-// ✅ chemin corrigé: state/room.js (singulier)
+// État salle
 const { rooms, snapshot, broadcast, createRoom } =
   require(path.join(__dirname, 'state', 'room.js'));
 
-// ✅ idem pour timer
+// Timers
 const { clearRoomTimer, startPhaseTimer } =
   require(path.join(__dirname, 'timer.js'));
 
+// Règles d’indice (on ne dépend pas d’un export normalize)
 const { isHintAllowed } =
   require(path.join(__dirname, 'game', 'validate.js'));
 
-// ✅ persistance via routes/utils/persistence.js (et fallback no-op)
+// Persistance (fallback no-op si absente)
 let makePersistence = () => ({
   upsertRoundResult: async () => {},
   getTop50:          async () => [],
@@ -25,12 +26,24 @@ let makePersistence = () => ({
 });
 try {
   makePersistence = require(path.join(__dirname, '..', 'utils', 'persistence.js')).makePersistence;
-} catch (e) {
+} catch {
   console.log('ℹ️ Persistence non branchée (utils/persistence.js introuvable).');
 }
 
 const { createController } =
   require(path.join(__dirname, 'game', 'controller.js'));
+
+/* ---------- Normalisation locale pour l’unicité des indices ----------
+   - enlève accents, casse, ponctuation inutile
+   - collapse les espaces
+----------------------------------------------------------------------- */
+function normalizeLocal(s) {
+  return String(s || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')   // accents
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gi, ' ')                      // ponctuation => espace
+    .trim().replace(/\s+/g, ' ');                      // espaces multiples
+}
 
 module.exports = function setupSockets(io, db){
   const { upsertRoundResult, getTop50, getMyStats } = makePersistence(db);
@@ -60,7 +73,7 @@ module.exports = function setupSockets(io, db){
         }));
         socket.emit('leaderboard', payload);
         socket.emit('leaderboardData', payload);
-      }catch(e){
+      }catch{
         socket.emit('errorMsg','Impossible de charger le Top 50');
       }
     });
@@ -169,19 +182,45 @@ module.exports = function setupSockets(io, db){
       socket.emit('actionAck', { action:'startRound', status:'ok' });
     });
 
-    // Indice
+    // INDICE (avec unicité + “live” pour l’imposteur)
     socket.on('submitHint', ({ hint })=>{
       const r = rooms.get(joined.code); if(!r || r.state!=='hints') return;
       const p = r.players.get(socket.id); if(!p) return;
-      if (typeof p.hint === 'string') return;
+      if (typeof p.hint === 'string') return;             // déjà envoyé
 
       const raw = String(hint||'').trim().slice(0,40);
+
+      // 1) règles de contenu
       const mySecret = p.isImpostor ? r.words.impostor : r.words.common;
       const check = isHintAllowed(mySecret, raw, r.words.domain);
       if (!check.ok) return socket.emit('hintRejected', { reason: check.reason });
 
-      p.hint = raw; socket.emit('hintAck');
+      // 2) unicité globale (par manche)
+      r.usedHints ||= new Set();
+      const key = normalizeLocal(raw);
+      if (r.usedHints.has(key)) {
+        return socket.emit('hintRejected', { reason: "Indice déjà utilisé par un autre joueur." });
+      }
+      r.usedHints.add(key);
 
+      // OK : enregistre et ACK
+      p.hint = raw;
+      socket.emit('hintAck');
+
+      // 3) Diffusion “live” à l’imposteur (seulement les indices des équipiers)
+      if (!p.isImpostor) {
+        r.liveCrewHints ||= [];
+        const item = { id: socket.id, name: p.name, hint: raw };
+        r.liveCrewHints.push({ name: p.name, hint: raw });
+
+        if (r.impostor) {
+          const impSock = io.sockets.sockets.get(r.impostor);
+          if (impSock) impSock.emit('crewHintAdded', item);
+          else io.to(r.impostor).emit('crewHintAdded', item);
+        }
+      }
+
+      // Progression
       const submitted = Array.from(r.players.values()).filter(x => typeof x.hint === 'string').length;
       io.to(joined.code).emit('phaseProgress', { phase:'hints', submitted, total: r.players.size });
 
@@ -189,22 +228,19 @@ module.exports = function setupSockets(io, db){
       broadcast(io, joined.code);
     });
 
-    // Vote (re-cliquable jusqu'à fin de timer)
+    // VOTE (re-cliquable jusqu’à fin du timer)
     socket.on('submitVote', ({ targetId })=>{
       const r = rooms.get(joined.code); if(!r || r.state!=='voting') return;
       if (!r.players.has(targetId)) return;
       const p = r.players.get(socket.id); if(!p) return;
 
-      // met à jour le vote (écrase l'ancien si besoin)
       p.vote = targetId;
       socket.emit('voteAck');
 
       const submitted = Array.from(r.players.values()).filter(x => !!x.vote).length;
       io.to(joined.code).emit('phaseProgress', { phase:'voting', submitted, total: r.players.size });
 
-      // ❌ Ne PAS finaliser ici : on laisse les joueurs changer d'avis jusqu'à la fin du timer
-      // controller.finishVoting(joined.code);
-
+      // Pas de finishVoting ici (on laisse changer d’avis jusqu’à la fin du timer)
       broadcast(io, joined.code);
     });
 

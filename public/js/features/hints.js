@@ -1,10 +1,13 @@
 // public/js/features/hints.js
 // Phase INDICES : affiche mot/rôle + Enter pour envoyer + messages d'erreur + progression
+// ➕ Si imposteur: affiche en LIVE les indices des équipiers (crewHintsLive / crewHintAdded)
 (function () {
   const { $, $$, toast, show, state, socket, resetPhaseProgress, onEnter } = window.HOL;
 
   let sending = false;   // envoi en cours
   let locked  = false;   // verrouillé après ack ou fin de timer
+  let liveBox = null;    // conteneur live pour l’imposteur
+  let liveList = null;
 
   const ui = {
     role:   () => $('my-role'),
@@ -38,6 +41,27 @@
     if (i) i.disabled = !!disabled;
     if (b) b.disabled = !!disabled;
   }
+
+  // ————— Live hints (imposteur) —————
+  function ensureLiveUI() {
+    if (liveBox && liveList) return;
+    const parent = document.getElementById('screen-hint') || document.body;
+    liveBox = document.createElement('div');
+    liveBox.id = 'crew-live-box';
+    liveBox.className = 'tip'; // réutilise ton style .tip
+    liveBox.style.marginTop = '8px';
+    liveBox.innerHTML = `<strong>Indices des équipiers (live)</strong><ul id="crew-live-list" style="margin:6px 0 0 18px"></ul>`;
+    parent.appendChild(liveBox);
+    liveList = liveBox.querySelector('#crew-live-list');
+  }
+  function liveClear() { if (liveList) liveList.innerHTML = ''; }
+  function liveAdd({ name, hint }) {
+    if (!liveList) return;
+    const li = document.createElement('li');
+    li.textContent = `${name || 'Joueur'} — ${hint || ''}`;
+    liveList.appendChild(li);
+  }
+  function liveSet(list) { liveClear(); (list || []).forEach(liveAdd); }
 
   function sendHint() {
     if (locked || sending) return;
@@ -73,9 +97,7 @@
         ui.role().textContent = isImpostor ? 'Imposteur' : 'Équipier';
         ui.role().className = 'role ' + (isImpostor ? 'imp' : 'crew');
       }
-      // ✅ pastille imposteur visible/masquée
       if (ui.tip()) ui.tip().style.display = isImpostor ? 'block' : 'none';
-      // ✅ texte d’instruction (ta logique)
       if (ui.instr()) {
         ui.instr().textContent = isImpostor
           ? "Donne 1 indice lié à ceux des équipiers sans te faire griller. 📌"
@@ -96,6 +118,10 @@
       $('progress-vote')  && ( $('progress-vote').textContent  = '0/0' );
       $('timer-vote')     && ( $('timer-vote').textContent     = '00:40' );
       $('timer-reveal')   && ( $('timer-reveal').textContent   = '--:--' );
+
+      // Live imposteur
+      if (isImpostor) { ensureLiveUI(); liveBox.style.display = 'block'; liveClear(); }
+      else if (liveBox) { liveBox.style.display = 'none'; liveClear(); }
     });
 
     // Progression (serveur envoie submitted/total)
@@ -114,10 +140,22 @@
     });
 
     socket.on('hintRejected', ({ reason } = {}) => {
-      // Rejet serveur (mot/thème identique, interdit, etc.)
+      // Rejet serveur (mot/thème identique, interdit, doublon, etc.)
       sending = false; locked = false;
       disableInputs(false);
       showError(reason);
+    });
+
+    // Live pour l’imposteur
+    socket.on('crewHintsLive', ({ hints }) => {
+      if (!state.myIsImpostor) return;
+      ensureLiveUI(); liveBox.style.display = 'block';
+      liveSet(hints || []);
+    });
+    socket.on('crewHintAdded', (item) => {
+      if (!state.myIsImpostor) return;
+      ensureLiveUI(); liveBox.style.display = 'block';
+      liveAdd(item);
     });
 
     // Timer coupe → verrouille

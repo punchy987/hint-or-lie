@@ -43,6 +43,10 @@ function createController({ io, upsertRoundResult, HINT_SECONDS, VOTE_SECONDS })
     const imp = r.players.get(impId);
     if (imp) imp.isImpostor = true;
 
+    // ➕ ÉTAT POUR LES NOUVELLES FONCTIONNALITÉS
+    r.usedHints = new Set();     // unicité des indices (normalisés) pour TOUTE la manche
+    r.liveCrewHints = [];        // indices des équipiers pour l’imposteur (live)
+
     r.round = (r.round || 0) + 1;
     r.state = 'hints';
 
@@ -55,6 +59,11 @@ function createController({ io, upsertRoundResult, HINT_SECONDS, VOTE_SECONDS })
         domain: r.words.domain,
         round: r.round,
       });
+    }
+
+    // ➕ l’imposteur reçoit la liste courante (souvent vide) dès le début
+    if (r.impostor) {
+      io.to(r.impostor).emit('crewHintsLive', { hints: r.liveCrewHints });
     }
 
     io.to(code).emit('phaseProgress', { phase: 'hints', submitted: 0, total: ids.length, round: r.round });
