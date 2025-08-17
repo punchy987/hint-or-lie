@@ -223,37 +223,56 @@
     (function(){
   if (!('serviceWorker' in navigator)) return;
 
-  // Enregistre le SW si ce n'est pas déjà fait
-  navigator.serviceWorker.register('/sw.js').then(function(reg){
-    // Si un nouveau SW est trouvé (mise à jour disponible)
-    function onNewServiceWorkerFound(worker){
-      if (!worker) return;
-      worker.addEventListener('statechange', function(){
-        // "installed" + on a déjà un contrôleur => c'est une mise à jour
-        if (worker.state === 'installed' && navigator.serviceWorker.controller) {
-          showUpdateBanner(reg);
-        }
-      });
-    }
+  function showUpdateBanner(reg){
+    var el = document.getElementById('update-banner');
+    if (!el) return;
+    el.style.display = 'block';
 
-    // Cas 1 : le SW est déjà en "waiting" (mise à jour prête)
-    if (reg.waiting) {
+    var btnReload = document.getElementById('update-reload');
+    var btnDismiss = document.getElementById('update-dismiss');
+
+    btnDismiss && (btnDismiss.onclick = function(){ el.style.display = 'none'; });
+
+    btnReload && (btnReload.onclick = function(){
+      if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+    });
+
+    // Quand la nouvelle version devient contrôleur → on recharge
+    navigator.serviceWorker.addEventListener('controllerchange', function(){
+      window.location.reload();
+    }, { once: true });
+  }
+
+  navigator.serviceWorker.register('/sw.js').then(function(reg){
+    // 1) Si une MAJ est déjà prête
+    if (reg.waiting && navigator.serviceWorker.controller) {
       showUpdateBanner(reg);
     }
 
-    // Cas 2 : un nouveau SW est en train de s'installer
-    if (reg.installing) {
-      onNewServiceWorkerFound(reg.installing);
-    }
-
-    // Cas 3 : plus tard, un update est trouvé
+    // 2) Si une MAJ arrive
     reg.addEventListener('updatefound', function(){
-      onNewServiceWorkerFound(reg.installing);
+      var newSW = reg.installing;
+      if (!newSW) return;
+      newSW.addEventListener('statechange', function(){
+        if (newSW.state === 'installed' && navigator.serviceWorker.controller){
+          showUpdateBanner(reg);
+        }
+      });
     });
 
-    // Optionnel : vérifie régulièrement s'il y a une mise à jour
-    setInterval(function(){ reg.update(); }, 60 * 1000 * 15); // toutes les 15 min
+    // 3) Forcer la recherche d’update quand l’app revient au 1er plan
+    function pokeUpdate(){
+      reg.update().catch(()=>{});
+    }
+    document.addEventListener('visibilitychange', function(){
+      if (document.visibilityState === 'visible') pokeUpdate();
+    });
+    window.addEventListener('focus', pokeUpdate);
+
+    // 4) Vérifier régulièrement (PWA / Safari iOS aime bien qu’on insiste)
+    setInterval(pokeUpdate, 5 * 60 * 1000); // toutes les 5 minutes
   });
+})();
 
   // Affiche le bandeau et branche les boutons
   function showUpdateBanner(reg){
@@ -280,7 +299,6 @@
       window.location.reload();
     }, { once: true });
   }
-})();
     function tierFromWins(w){
       if (w>=120) return 'Diamond';
       if (w>=60)  return 'Platinum';
