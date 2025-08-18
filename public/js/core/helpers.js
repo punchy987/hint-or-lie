@@ -3,6 +3,10 @@
 (function () {
   const HOL = (window.HOL = window.HOL || {});
 
+  // === Sur quels écrans afficher le scoreboard (inline) ===
+  // => UNIQUEMENT Indice, Vote, Résultat (pas sur Home, pas sur Lobby)
+  HOL.SCORE_SCREENS = new Set(['screen-hint', 'screen-vote', 'screen-result']);
+
   HOL.$ = HOL.$ || ((s, r = document) => {
     if (!s) return null;
     const bySel = s.startsWith('#') || s.startsWith('.') || /[>\[\]:\s]/.test(s);
@@ -30,7 +34,29 @@
     });
   };
 
-  // ✅ Affichage d'écran robuste + scoreboard 'block' hors accueil
+  // Monte/démonte le scoreboard "dans" la carte de l'écran courant
+  function mountScoreboard(screenId) {
+    const sb = document.getElementById('scoreboard');
+    if (!sb) return;
+
+    // Caché sur l'accueil ou si l'écran n'est pas whitelisté
+    if (screenId === 'screen-home' || !HOL.SCORE_SCREENS.has(screenId)) {
+      sb.classList.remove('scoreboard-inline');
+      sb.style.display = 'none';
+      // on le range hors des cartes pour ne pas polluer d'autres écrans
+      document.body.appendChild(sb);
+      return;
+    }
+
+    const host = document.getElementById(screenId);
+    if (!host) return;
+
+    sb.classList.add('scoreboard-inline'); // le CSS fera display:block
+    sb.style.display = '';
+    host.appendChild(sb); // collé à la fin du contenu de la carte
+  }
+
+  // ✅ Affichage d'écran + montage du scoreboard inline
   HOL.show = HOL.show || function (screenId) {
     const ids = ['screen-home', 'screen-lobby', 'screen-hint', 'screen-vote', 'screen-result'];
     for (const id of ids) {
@@ -40,8 +66,7 @@
     }
     document.body.setAttribute('data-screen', screenId);
 
-    const sb = document.getElementById('scoreboard');
-    if (sb) sb.style.display = (screenId === 'screen-home') ? 'none' : 'block';
+    mountScoreboard(screenId);
 
     try { window.scrollTo({ top: 0, behavior: 'instant' }); } catch { window.scrollTo(0, 0); }
   };
@@ -81,5 +106,6 @@
     return `${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`;
   };
 
+  // défini dans state.js; no-op ici pour éviter les erreurs avant chargement
   HOL.updateScoreboard = HOL.updateScoreboard || function () {};
 })();

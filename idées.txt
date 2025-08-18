@@ -1,8 +1,5 @@
-bloquer les indices deja envoyes impossible de changer l'indice (otpion déjà présente); rajout d'un message pour les autres joueurs: "indice déjà pris" interdit de prendr le meme du coup 
 tableau de score inexistant (à corriger) on avait dit seulement au salon.
-les imposteurs peuvent voir les indices envoyés.
 boutons "envoyer l'indice" et bouton "prêt" à revoir peut etre décalés pour les utilisateurs mobile -> revoir tous les boutons. corriger les tailles et alignements
-manches figées à 0 à corriger.
 mise en attente des gens qui rejoignent pendant une manche peuvent voir le déroulement des manches (à voir pour les détails exactes) 
-barre de progression doit passer derriere les autres pastilles
+
 
