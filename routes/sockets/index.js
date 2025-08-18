@@ -1,28 +1,23 @@
 // routes/sockets/index.js
-// Sockets: hello / createRoom / joinRoom / leaveRoom / ready + timers
-
 const path = require('path');
 
 const { HINT_SECONDS, VOTE_SECONDS, LOBBY_READY_SECONDS } =
   require(path.join(__dirname, '..', '..', 'config', 'index.js'));
 
-// État salle
 const { rooms, snapshot, broadcast, createRoom } =
   require(path.join(__dirname, 'state', 'room.js'));
 
-// Timers
 const { clearRoomTimer, startPhaseTimer } =
   require(path.join(__dirname, 'timer.js'));
 
-// Règles d’indice (on ne dépend pas d’un export normalize)
 const { isHintAllowed } =
   require(path.join(__dirname, 'game', 'validate.js'));
 
-// Persistance (fallback no-op si absente)
 let makePersistence = () => ({
   upsertRoundResult: async () => {},
   getTop50:          async () => [],
   getMyStats:        async () => null,
+  applyPenaltyIfNotWinner: async () => ({ ok:false, reason:'no-db' }),
 });
 try {
   makePersistence = require(path.join(__dirname, '..', 'utils', 'persistence.js')).makePersistence;
@@ -33,36 +28,29 @@ try {
 const { createController } =
   require(path.join(__dirname, 'game', 'controller.js'));
 
-/* ---------- Normalisation locale pour l’unicité des indices ----------
-   - enlève accents, casse, ponctuation inutile
-   - collapse les espaces
------------------------------------------------------------------------ */
 function normalizeLocal(s) {
   return String(s || '')
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')   // accents
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
-    .replace(/[^a-z0-9]+/gi, ' ')                      // ponctuation => espace
-    .trim().replace(/\s+/g, ' ');                      // espaces multiples
+    .replace(/[^a-z0-9]+/gi, ' ')
+    .trim().replace(/\s+/g, ' ');
 }
 
 module.exports = function setupSockets(io, db){
-  const { upsertRoundResult, getTop50, getMyStats } = makePersistence(db);
-  const controller = createController({ io, upsertRoundResult, HINT_SECONDS, VOTE_SECONDS });
+  const { upsertRoundResult, getTop50, getMyStats, applyPenaltyIfNotWinner } = makePersistence(db);
+  const controller = createController({ io, upsertRoundResult, applyPenaltyIfNotWinner, HINT_SECONDS, VOTE_SECONDS });
 
   io.on('connection',(socket)=>{
     let joined  = { code:null };
     let profile = { deviceId:null, lastPseudo:null };
 
-    // Debug pratique
     if (socket.onAny) socket.onAny((ev, ...args) => console.debug('⟵', socket.id, ev, ...args));
 
-    // Identité
     socket.on('hello', ({ deviceId, pseudo } = {})=>{
-      if (deviceId) profile.deviceId  = String(deviceId).slice(0,64);
+      if (deviceId) profile.deviceId   = String(deviceId).slice(0,64);
       if (pseudo)   profile.lastPseudo = String(pseudo).slice(0,16);
     });
 
-    // Leaderboard
     socket.on('getLeaderboard', async ()=>{
       try{
         const top = await getTop50();
@@ -70,6 +58,7 @@ module.exports = function setupSockets(io, db){
           deviceId: x.deviceId,
           pseudo:   x.lastPseudo || 'Joueur',
           wins:     Number(x.wins || 0),
+          rp:       Number(x.rp || 0),
         }));
         socket.emit('leaderboard', payload);
         socket.emit('leaderboardData', payload);
@@ -86,7 +75,6 @@ module.exports = function setupSockets(io, db){
       } : { rp:0, rounds:0, wins:0, winsCrew:0, winsImpostor:0 });
     });
 
-    // Créer une salle
     socket.on('createRoom', ({ name, deviceId, pseudo } = {})=>{
       const displayName = String(name || pseudo || profile.lastPseudo || 'Joueur').slice(0,16);
       const code = createRoom(socket.id, displayName);
@@ -103,7 +91,6 @@ module.exports = function setupSockets(io, db){
       broadcast(io, code);
     });
 
-    // Rejoindre une salle
     socket.on('joinRoom', ({ code, name, deviceId, pseudo } = {})=>{
       code = String(code || '').trim();
       if (!/^\d{4}$/.test(code)) return socket.emit('errorMsg','Code invalide (4 chiffres)');
@@ -128,7 +115,6 @@ module.exports = function setupSockets(io, db){
       io.to(code).emit('lobbyReadyProgress', { ready: r.lobbyReady.size, total: r.players.size });
     });
 
-    // Quitter la salle
     socket.on('leaveRoom', ()=>{
       const code = joined.code; if(!code) return;
       const r = rooms.get(code); if(!r) return;
@@ -155,7 +141,6 @@ module.exports = function setupSockets(io, db){
       socket.emit('leftRoom');
     });
 
-    // Prêt lobby
     socket.on('playerReadyLobby', ({ ready })=>{
       const r = rooms.get(joined.code); if(!r) return; if (r.state !== 'lobby') return;
 
@@ -174,7 +159,6 @@ module.exports = function setupSockets(io, db){
       }
     });
 
-    // Démarrage manuel (hôte)
     socket.on('startRound', ()=>{
       const r = rooms.get(joined.code); if(!r) return;
       if (r.hostId !== socket.id) return socket.emit('errorMsg',"Seul l'hôte peut démarrer");
@@ -182,32 +166,25 @@ module.exports = function setupSockets(io, db){
       socket.emit('actionAck', { action:'startRound', status:'ok' });
     });
 
-    // INDICE (avec unicité + “live” pour l’imposteur)
     socket.on('submitHint', ({ hint })=>{
       const r = rooms.get(joined.code); if(!r || r.state!=='hints') return;
       const p = r.players.get(socket.id); if(!p) return;
-      if (typeof p.hint === 'string') return;             // déjà envoyé
+      if (typeof p.hint === 'string') return;
 
       const raw = String(hint||'').trim().slice(0,40);
 
-      // 1) règles de contenu
       const mySecret = p.isImpostor ? r.words.impostor : r.words.common;
       const check = isHintAllowed(mySecret, raw, r.words.domain);
       if (!check.ok) return socket.emit('hintRejected', { reason: check.reason });
 
-      // 2) unicité globale (par manche)
       r.usedHints ||= new Set();
       const key = normalizeLocal(raw);
-      if (r.usedHints.has(key)) {
-        return socket.emit('hintRejected', { reason: "Indice déjà utilisé par un autre joueur." });
-      }
+      if (r.usedHints.has(key)) return socket.emit('hintRejected', { reason: "Indice déjà utilisé par un autre joueur." });
       r.usedHints.add(key);
 
-      // OK : enregistre et ACK
       p.hint = raw;
       socket.emit('hintAck');
 
-      // 3) Diffusion “live” à l’imposteur (seulement les indices des équipiers)
       if (!p.isImpostor) {
         r.liveCrewHints ||= [];
         const item = { id: socket.id, name: p.name, hint: raw };
@@ -220,7 +197,6 @@ module.exports = function setupSockets(io, db){
         }
       }
 
-      // Progression
       const submitted = Array.from(r.players.values()).filter(x => typeof x.hint === 'string').length;
       io.to(joined.code).emit('phaseProgress', { phase:'hints', submitted, total: r.players.size });
 
@@ -228,29 +204,21 @@ module.exports = function setupSockets(io, db){
       broadcast(io, joined.code);
     });
 
-    // Vote (re-cliquable jusqu'à fin ou jusqu'à ce que tout le monde ait voté)
-socket.on('submitVote', ({ targetId })=>{
-  const r = rooms.get(joined.code); if(!r || r.state!=='voting') return;
-  if (!r.players.has(targetId)) return;
-  const p = r.players.get(socket.id); if(!p) return;
+    socket.on('submitVote', ({ targetId })=>{
+      const r = rooms.get(joined.code); if(!r || r.state!=='voting') return;
+      if (!r.players.has(targetId)) return;
+      const p = r.players.get(socket.id); if(!p) return;
 
-  // met à jour (écrase l'ancien si besoin)
-  p.vote = targetId;
-  socket.emit('voteAck');
+      p.vote = targetId;
+      socket.emit('voteAck');
 
-  const submitted = Array.from(r.players.values()).filter(x => !!x.vote).length;
-  io.to(joined.code).emit('phaseProgress', { phase:'voting', submitted, total: r.players.size });
+      const submitted = Array.from(r.players.values()).filter(x => !!x.vote).length;
+      io.to(joined.code).emit('phaseProgress', { phase:'voting', submitted, total: r.players.size });
 
-  // 🔔 Fin anticipée : si TOUT le monde a voté, on passe immédiatement aux résultats
-  if (submitted === r.players.size) {
-    controller.finishVoting(joined.code); // efface le timer et émet 'roundResult'
-  } else {
-    // sinon on laisse les gens changer d'avis jusqu'au dernier votant
-    broadcast(io, joined.code);
-  }
-});
+      if (submitted === r.players.size) controller.finishVoting(joined.code);
+      else broadcast(io, joined.code);
+    });
 
-    // Prêt pour la prochaine manche
     socket.on('playerReadyNext', ()=>{
       const r = rooms.get(joined.code); if(!r) return; if (r.state !== 'reveal') return;
       r.readyNext ||= new Set();
@@ -261,7 +229,6 @@ socket.on('submitVote', ({ targetId })=>{
       }
     });
 
-    // Reset scores (hôte)
     socket.on('resetScores', ()=>{
       const r = rooms.get(joined.code); if(!r) return;
       if (r.hostId !== socket.id) return socket.emit('errorMsg',"Seul l'hôte peut réinitialiser");
@@ -273,7 +240,6 @@ socket.on('submitVote', ({ targetId })=>{
       broadcast(io, joined.code);
     });
 
-    // Déconnexion
     socket.on('disconnect', ()=>{
       const code = joined.code; if(!code) return;
       const r = rooms.get(code); if(!r) return;

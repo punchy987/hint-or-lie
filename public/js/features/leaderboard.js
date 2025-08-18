@@ -78,3 +78,63 @@
   window.HOL.features = window.HOL.features || {};
   window.HOL.features.leaderboard = { init };
 })();
+// public/js/features/leaderboard.js
+(function () {
+  const { $, socket } = window.HOL;
+
+  function getHlRank(rp) {
+    const x = Number(rp) || 0;
+    if (x >= 200) return 'Diamant';
+    if (x >= 150) return 'Platine';
+    if (x >= 120) return 'Or';
+    if (x >= 80)  return 'Argent';
+    if (x >= 40)  return 'Bronze';
+    return 'Novice';
+  }
+
+  const ICON = {
+    'Novice':  '🟢',
+    'Bronze':  '🟤',
+    'Argent':  '⚪',
+    'Or':      '🟡',
+    'Platine': '🔵',
+    'Diamant': '💎',
+  };
+
+  function render(list) {
+    const ul = $('lb-list'); if (!ul) return;
+
+    // Tri par rp desc
+    const sorted = (list || []).slice().sort((a,b) => (b.rp||0) - (a.rp||0));
+    const top = sorted.slice(0, 10);
+
+    ul.innerHTML = '';
+    top.forEach((p, i) => {
+      const rp = Number(p.rp || 0);
+      const rank = getHlRank(rp);
+      const li = document.createElement('li');
+      li.textContent = `${p.pseudo || 'Joueur'} — HL Rank ${rank} → ${rp} points`;
+      // option : petit embellissement avec icône
+      li.prepend(document.createTextNode((ICON[rank] || '') + ' '));
+      ul.appendChild(li);
+    });
+
+    if (top.length === 0) {
+      const li = document.createElement('li');
+      li.textContent = 'Aucun joueur pour le moment.';
+      ul.appendChild(li);
+    }
+  }
+
+  function init() {
+    // écoute les données
+    socket.on('leaderboard', render);
+    socket.on('leaderboardData', render); // compat
+
+    // demande au serveur
+    socket.emit('getLeaderboard');
+  }
+
+  window.HOL.features = window.HOL.features || {};
+  window.HOL.features.leaderboard = { init };
+})();

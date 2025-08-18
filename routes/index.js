@@ -1,4 +1,4 @@
-// Routes HTTP simples
+// routes/index.js
 const path = require('path');
 
 module.exports = (app) => {
