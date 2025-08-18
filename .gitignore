@@ -8,3 +8,4 @@ hint-or-lie-firebase-adminsdk-fbsvc-fcfacb4301e.json
 hint-or-lie-firebase-adminsdk-*.json
 *_serviceaccount*.json
 secrets/**
+config/firebase-service-account.json 
