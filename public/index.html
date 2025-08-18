@@ -21,6 +21,8 @@
   <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
   <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180.png">
   <link rel="stylesheet" href="css/07-scoreboard.css">
+  <link rel="stylesheet" href="css/08-lobby-header.css">
+
 </head>
 <body class="stars">
 
@@ -79,13 +81,13 @@
 
       <button class="btn-secondary" id="btn-how" type="button">Règles rapides</button>
       <div id="how" class="rules" style="display:none">
-        <h4>Règles — en 4 points</h4>
-        <ul>
-          <li>La plupart ont le <strong>même mot</strong>, un joueur a un <strong>mot différent</strong> (imposteur).</li>
-          <li><strong>Indice :</strong> chacun donne <strong>1 mot</strong> lié au thème, sans le révéler.</li>
-          <li><strong>Vote :</strong> on choisit le suspect, puis révélation et points.</li>
-          <li><strong>Victoire :</strong> premier à <strong>10 points</strong>.</li>
-        </ul>
+         <h4>Règles — Hint or Lie</h4>
+  <ul>
+    <li>🎭 Un seul joueur a un mot différent — l’imposteur</li>
+    <li>✍️ Chacun donne 1 indice lié au thème sans le révéler</li>
+    <li>🚫 Pas deux fois le même indice, ni le mot exact, ni le thème</li>
+    <li>👀 Attention, l’imposteur voit les indices des équipiers</li>
+  </ul>
       </div>
 
       <div class="rules" id="lb" style="margin-top:10px">
@@ -118,10 +120,15 @@
       <div class="rules">
         <h4>Règles — Hint or Lie</h4>
         <ul>
-          <li>La plupart ont le <strong>même mot</strong>, un joueur a un <strong>mot différent</strong> (imposteur).</li>
-          <li><strong>Indice :</strong> chacun donne 1 mot lié au thème, sans révéler le mot.</li>
-          <li><strong>Vote :</strong> on choisit le suspect. Révélation & points.</li>
-          <li><strong>Victoire :</strong> premier à <strong>10 points</strong>.</li>
+          <li>🎯 But du jeu — la plupart ont le même mot ; un joueur a un mot différent</li>
+    <li>🧩 Mise en place — chacun reçoit son mot ; le thème est commun</li>
+    <li>✍️ Phase Indices — chacun donne 1 indice lié au thème, sans le révéler</li>
+    <li>🔒 Unicité des indices — deux joueurs ne peuvent pas envoyer le même indice ; mot exact et thème refusés ; indice bloqué si interdit</li>
+    <li>🕵️ Aide imposteur — il voit en direct les indices des équipiers ; soyez malins</li>
+    <li>🗳️ Phase Vote — on choisit un suspect ; vote modifiable jusqu’à la fin</li>
+    <li>⚡ Fin du vote — quand tout le monde a voté, résultats immédiats ; sinon à la fin du chrono</li>
+    <li>⭐ Points — équipiers +1 si l’imposteur est trouvé ; sinon imposteur +2</li>
+    <li>🏁 Victoire — premier à 10 points</li>
         </ul>
       </div>
     </div>

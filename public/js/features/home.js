@@ -91,6 +91,19 @@
       state.me.id = s.id;
       console.log('socket connected', s.id);
     });
+    const codeSpan = HOL.$('lobby-code');
+if (codeSpan && !codeSpan._wired) {
+  codeSpan._wired = true;
+  const pill = codeSpan.parentElement;
+  if (pill) {
+    pill.style.cursor = 'pointer';
+    pill.title = 'Copier le code';
+    pill.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText((codeSpan.textContent||'').trim()); HOL.toast('Code copié 📋'); }
+      catch { HOL.toast('Copie impossible'); }
+    });
+  }
+}
 
     // Debug global des events reçus (fix: plus de ".args")
     if (s.onAny) {

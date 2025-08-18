@@ -1,0 +1,47 @@
+/* 08-lobby-header.css — header du salon plus lisible, sans impacter le reste */
+
+/* Conteneur de la première rangée du lobby */
+#screen-lobby > .row:first-child{
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+/* Pastilles (Manche, Code, Prêts, Timer) – plus grandes et grasses */
+#screen-lobby > .row:first-child .pill{
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #140f1a;
+  color: var(--text);
+  font-weight: 850;
+  font-size: 14px;              /* ↑ taille texte */
+  box-shadow: 0 6px 16px rgba(0,0,0,.18);
+}
+
+/* Chiffres mis en valeur */
+#screen-lobby #round-num,
+#screen-lobby #lobby-code,
+#screen-lobby #timer-lobby{
+  font-weight: 900;
+  color: #ffd0c4;
+  margin-left: 4px;
+}
+
+/* Badge “Tu es l’hôte” avec la couleur d’équipe */
+#screen-lobby #host-badge{
+  color: var(--accent-3);
+  border-color: var(--accent-3);
+  font-weight: 900;
+  background: #140f1a;
+}
+
+/* Mobile : on centre proprement si ça wrappe sur 2 lignes */
+@media (max-width: 560px){
+  #screen-lobby > .row:first-child{ justify-content: center; }
+}

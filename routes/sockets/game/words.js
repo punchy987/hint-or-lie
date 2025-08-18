@@ -9,7 +9,7 @@ const DOMAINS = {
   "Animaux": [
     "Chat","Chien","Tortue","Kangourou","Dauphin","Requin","Panda","Koala","Tigre",
     "Lion","Perroquet","Toucan","Cheval","Zèbre","Aigle","Faucon","Loutre","Castor",
-    "Grenouille","Serpent","Souris"
+    "Grenouille","Serpent","Souris","Poisson","Hérisson"
   ],
   "Villes": [
     "Paris","Londres","Tokyo","Osaka","New York","Los Angeles","Rome","Athènes",
@@ -21,7 +21,7 @@ const DOMAINS = {
     "Australie","Maroc","Mexique","États-Unis","Chine","Inde","Royaume-Uni"
   ],
   "Sports": [
-    "Football","Rugby","Tennis","Badminton","Basket","Handball","Boxe","Arts martiaux",
+    "Football","Rugby","Tennis","Badminton","Basket","Handball","Boxe","Kung-fu",
     "Formule 1","Rallye","Surf","Voile","Cyclisme","VTT (Vélo tout-terrain)","Ski","Snowboard","Golf",
     "Cricket","Danse"
   ],
@@ -41,7 +41,7 @@ const DOMAINS = {
   ],
   "Transports": [
     "Voiture","Moto","Bus","Tram","Train","Métro","Avion","Hélicoptère","Bateau",
-    "Ferry","Vélo","Trottinette"
+    "Voilier","Vélo","Trottinette","Jet-sky","Sous-marin","Mongolfière","Deltaplane"
   ],
   "Couleurs Formes": [
     "Rouge","Orange","Bleu","Cyan","Vert","Vert citron","Noir","Gris","Blanc","Ivoire",
@@ -84,20 +84,20 @@ const CLUSTERS = {
     ["Hibiscus","Tipanier (frangipanier)","Rose"]
   ],
   "Animaux": [
-    ["Chat","Chien","Kangourou","Panda","Koala","Tigre","Lion","Cheval","Zèbre","Loutre","Castor"],
+    ["Chat","Chien","Kangourou","Panda","Koala","Tigre","Lion","Cheval","Zèbre","Loutre","Castor","Ours"],
     ["Perroquet","Toucan","Aigle","Faucon"],
-    ["Dauphin","Requin"],
-    ["Tortue","Grenouille","Serpent","Souris"]
+    ["Dauphin","Requin","Poisson","Tortue"],
+    ["Hérisson","Grenouille","Serpent","Souris"]
   ],
   "Transports": [
     ["Voiture","Moto","Bus","Tram","Train","Métro","Trottinette","Vélo"],
-    ["Avion","Hélicoptère"],
-    ["Bateau","Ferry"]
+    ["Avion","Hélicoptère","Mongolfière","Deltaplane"],
+    ["Voilier","Jet-sky","Sous-marin","Ferry"]
   ],
   "Sports": [
     ["Football","Rugby","Basket","Handball"],
     ["Tennis","Badminton","Golf","Cricket"],
-    ["Boxe","Arts martiaux","Danse"],
+    ["Boxe","Kung-fu","Danse","Karaté"],
     ["Formule 1","Rallye","Surf","Voile","Cyclisme","VTT (Vélo tout-terrain)","Ski","Snowboard"]
   ]
 };

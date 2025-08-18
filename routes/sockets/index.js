@@ -228,21 +228,27 @@ module.exports = function setupSockets(io, db){
       broadcast(io, joined.code);
     });
 
-    // VOTE (re-cliquable jusqu’à fin du timer)
-    socket.on('submitVote', ({ targetId })=>{
-      const r = rooms.get(joined.code); if(!r || r.state!=='voting') return;
-      if (!r.players.has(targetId)) return;
-      const p = r.players.get(socket.id); if(!p) return;
+    // Vote (re-cliquable jusqu'à fin ou jusqu'à ce que tout le monde ait voté)
+socket.on('submitVote', ({ targetId })=>{
+  const r = rooms.get(joined.code); if(!r || r.state!=='voting') return;
+  if (!r.players.has(targetId)) return;
+  const p = r.players.get(socket.id); if(!p) return;
 
-      p.vote = targetId;
-      socket.emit('voteAck');
+  // met à jour (écrase l'ancien si besoin)
+  p.vote = targetId;
+  socket.emit('voteAck');
 
-      const submitted = Array.from(r.players.values()).filter(x => !!x.vote).length;
-      io.to(joined.code).emit('phaseProgress', { phase:'voting', submitted, total: r.players.size });
+  const submitted = Array.from(r.players.values()).filter(x => !!x.vote).length;
+  io.to(joined.code).emit('phaseProgress', { phase:'voting', submitted, total: r.players.size });
 
-      // Pas de finishVoting ici (on laisse changer d’avis jusqu’à la fin du timer)
-      broadcast(io, joined.code);
-    });
+  // 🔔 Fin anticipée : si TOUT le monde a voté, on passe immédiatement aux résultats
+  if (submitted === r.players.size) {
+    controller.finishVoting(joined.code); // efface le timer et émet 'roundResult'
+  } else {
+    // sinon on laisse les gens changer d'avis jusqu'au dernier votant
+    broadcast(io, joined.code);
+  }
+});
 
     // Prêt pour la prochaine manche
     socket.on('playerReadyNext', ()=>{
