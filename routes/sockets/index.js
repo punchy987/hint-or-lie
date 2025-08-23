@@ -75,6 +75,7 @@ module.exports = function setupSockets(io, db){
       } : { rp:0, rounds:0, wins:0, winsCrew:0, winsImpostor:0 });
     });
 
+    // ---- createRoom
     socket.on('createRoom', ({ name, deviceId, pseudo } = {})=>{
       const displayName = String(name || pseudo || profile.lastPseudo || 'Joueur').slice(0,16);
       const code = createRoom(socket.id, displayName);
@@ -91,6 +92,7 @@ module.exports = function setupSockets(io, db){
       broadcast(io, code);
     });
 
+    // ---- joinRoom
     socket.on('joinRoom', ({ code, name, deviceId, pseudo } = {})=>{
       code = String(code || '').trim();
       if (!/^\d{4}$/.test(code)) return socket.emit('errorMsg','Code invalide (4 chiffres)');
@@ -108,6 +110,23 @@ module.exports = function setupSockets(io, db){
         deviceId: profile.deviceId
       });
 
+      // Rejoint en cours de manche → spectateur (ne pas gonfler les compteurs)
+      if (r.state === 'hints' || r.state === 'voting') {
+        const p = r.players.get(socket.id);
+        p.spectator = true;
+        socket.emit('spectatorMode', { phase: r.state, message: 'Tu participeras à la prochaine manche' });
+
+        if (r.active && r.active.size) {
+          if (r.state === 'hints') {
+            const submitted = Array.from(r.active).filter(id => typeof r.players.get(id)?.hint === 'string').length;
+            io.to(code).emit('phaseProgress', { phase:'hints', submitted, total: r.active.size });
+          } else {
+            const submitted = Array.from(r.active).filter(id => !!r.players.get(id)?.vote).length;
+            io.to(code).emit('phaseProgress', { phase:'voting', submitted, total: r.active.size });
+          }
+        }
+      }
+
       socket.emit('roomJoined', { code });
       broadcast(io, code);
 
@@ -115,11 +134,13 @@ module.exports = function setupSockets(io, db){
       io.to(code).emit('lobbyReadyProgress', { ready: r.lobbyReady.size, total: r.players.size });
     });
 
+    // ---- leaveRoom
     socket.on('leaveRoom', ()=>{
       const code = joined.code; if(!code) return;
       const r = rooms.get(code); if(!r) return;
 
       r.players.delete(socket.id);
+      if (r.active?.has(socket.id)) r.active.delete(socket.id);
 
       if (r.lobbyReady?.has(socket.id)){
         r.lobbyReady.delete(socket.id);
@@ -133,7 +154,24 @@ module.exports = function setupSockets(io, db){
 
       if (r.hostId === socket.id){
         const first = r.players.keys().next().value;
-        if (first) r.hostId = first; else rooms.delete(code);
+        if (first) r.hostId = first; else { rooms.delete(code); socket.leave(code); joined.code = null; return; }
+      }
+
+      // Si on est en manche et que les actifs < 3 → retour lobby
+      if ((r.state === 'hints' || r.state === 'voting') && r.active && r.active.size < 3) {
+        clearRoomTimer(r);
+        for (const id of r.active) {
+          const p = r.players.get(id);
+          if (p) { p.hint = null; p.vote = null; p.isImpostor = false; }
+        }
+        r.state = 'lobby';
+        r.lobbyReady = new Set();
+        r.readyNext  = new Set();
+        r.used = {};
+        r.impostor = null;
+
+        io.to(code).emit('lobbyCountdownCancelled');
+        io.to(code).emit('errorMsg', 'Pas assez de joueurs actifs, retour au lobby');
       }
 
       socket.leave(code); joined.code = null;
@@ -141,6 +179,7 @@ module.exports = function setupSockets(io, db){
       socket.emit('leftRoom');
     });
 
+    // ---- playerReadyLobby
     socket.on('playerReadyLobby', ({ ready })=>{
       const r = rooms.get(joined.code); if(!r) return; if (r.state !== 'lobby') return;
 
@@ -159,6 +198,7 @@ module.exports = function setupSockets(io, db){
       }
     });
 
+    // ---- startRound (host only)
     socket.on('startRound', ()=>{
       const r = rooms.get(joined.code); if(!r) return;
       if (r.hostId !== socket.id) return socket.emit('errorMsg',"Seul l'hôte peut démarrer");
@@ -166,9 +206,13 @@ module.exports = function setupSockets(io, db){
       socket.emit('actionAck', { action:'startRound', status:'ok' });
     });
 
+    // ---- submitHint
     socket.on('submitHint', ({ hint })=>{
       const r = rooms.get(joined.code); if(!r || r.state!=='hints') return;
       const p = r.players.get(socket.id); if(!p) return;
+
+      // Spectateur : pas d’action
+      if (!r.active?.has(socket.id)) return socket.emit('errorMsg', 'Tu participeras au prochain tour (spectateur)');
       if (typeof p.hint === 'string') return;
 
       const raw = String(hint||'').trim().slice(0,40);
@@ -197,28 +241,33 @@ module.exports = function setupSockets(io, db){
         }
       }
 
-      const submitted = Array.from(r.players.values()).filter(x => typeof x.hint === 'string').length;
-      io.to(joined.code).emit('phaseProgress', { phase:'hints', submitted, total: r.players.size });
+      const submitted = Array.from(r.active).filter(id => typeof r.players.get(id)?.hint === 'string').length;
+      io.to(joined.code).emit('phaseProgress', { phase:'hints', submitted, total: r.active.size });
 
       controller.maybeStartVoting(joined.code);
       broadcast(io, joined.code);
     });
 
+    // ---- submitVote
     socket.on('submitVote', ({ targetId })=>{
       const r = rooms.get(joined.code); if(!r || r.state!=='voting') return;
       if (!r.players.has(targetId)) return;
       const p = r.players.get(socket.id); if(!p) return;
 
+      // Spectateur : pas d’action
+      if (!r.active?.has(socket.id)) return socket.emit('errorMsg', 'Tu voteras à la prochaine manche (spectateur)');
+
       p.vote = targetId;
       socket.emit('voteAck');
 
-      const submitted = Array.from(r.players.values()).filter(x => !!x.vote).length;
-      io.to(joined.code).emit('phaseProgress', { phase:'voting', submitted, total: r.players.size });
+      const submitted = Array.from(r.active).filter(id => !!r.players.get(id)?.vote).length;
+      io.to(joined.code).emit('phaseProgress', { phase:'voting', submitted, total: r.active.size });
 
-      if (submitted === r.players.size) controller.finishVoting(joined.code);
+      if (submitted === r.active.size) controller.finishVoting(joined.code);
       else broadcast(io, joined.code);
     });
 
+    // ---- playerReadyNext (reveal -> manche suivante)
     socket.on('playerReadyNext', ()=>{
       const r = rooms.get(joined.code); if(!r) return; if (r.state !== 'reveal') return;
       r.readyNext ||= new Set();
@@ -229,6 +278,7 @@ module.exports = function setupSockets(io, db){
       }
     });
 
+    // ---- resetScores (host only)
     socket.on('resetScores', ()=>{
       const r = rooms.get(joined.code); if(!r) return;
       if (r.hostId !== socket.id) return socket.emit('errorMsg',"Seul l'hôte peut réinitialiser");
@@ -240,25 +290,111 @@ module.exports = function setupSockets(io, db){
       broadcast(io, joined.code);
     });
 
-    socket.on('disconnect', ()=>{
-      const code = joined.code; if(!code) return;
-      const r = rooms.get(code); if(!r) return;
+    // ---- disconnect
+    socket.on('disconnect', () => {
+      const code = joined.code; if (!code) return;
+      const r = rooms.get(code); if (!r) return;
 
+      const me = r.players.get(socket.id);
+      const name = me?.name || 'Un joueur';
+      const wasHost = (r.hostId === socket.id);
+      const wasImpostor = !!me?.isImpostor;
+
+      // retirer le joueur (players + active)
       r.players.delete(socket.id);
+      if (r.active?.has(socket.id)) r.active.delete(socket.id);
 
-      if (r.lobbyReady?.has(socket.id)){
+      // nettoyer ready sets + éventuel compte à rebours lobby
+      if (r.lobbyReady?.has(socket.id)) {
         r.lobbyReady.delete(socket.id);
         io.to(code).emit('lobbyReadyProgress', { ready: r.lobbyReady.size, total: r.players.size });
-        if (r.timer?.phase === 'lobby'){ clearRoomTimer(r); io.to(code).emit('lobbyCountdownCancelled'); }
+        if (r.timer?.phase === 'lobby') { clearRoomTimer(r); io.to(code).emit('lobbyCountdownCancelled'); }
       }
-      if (r.readyNext?.has(socket.id)){
+      if (r.readyNext?.has(socket.id)) {
         r.readyNext.delete(socket.id);
         io.to(code).emit('readyProgress', { ready: r.readyNext.size, total: r.players.size });
       }
 
-      if (r.hostId === socket.id){
+      // si plus personne → supprimer la room
+      if (r.players.size === 0) { rooms.delete(code); return; }
+
+      // transfert d’hôte si besoin
+      if (wasHost) {
         const first = r.players.keys().next().value;
-        if (first) r.hostId = first; else rooms.delete(code);
+        if (first) r.hostId = first;
+      }
+
+      // message système
+      io.to(code).emit('system', { text: `👋 ${name} a quitté la partie` });
+
+      // si on est en manche et que les actifs < 3 → retour lobby immédiat
+      if ((r.state === 'hints' || r.state === 'voting') && r.active && r.active.size < 3) {
+        clearRoomTimer(r);
+        for (const id of r.active) {
+          const p = r.players.get(id);
+          if (p) { p.hint = null; p.vote = null; p.isImpostor = false; }
+        }
+        r.state = 'lobby';
+        r.lobbyReady = new Set();
+        r.readyNext  = new Set();
+        r.used = {};
+        r.impostor = null;
+
+        io.to(code).emit('lobbyCountdownCancelled');
+        io.to(code).emit('errorMsg', 'Pas assez de joueurs actifs, retour au lobby');
+        broadcast(io, code);
+        return;
+      }
+
+      // réconcilier la phase en cours (compteurs avec r.active)
+      if (r.state === 'hints') {
+        const submitted = Array.from(r.active || []).filter(id => typeof r.players.get(id)?.hint === 'string').length;
+        io.to(code).emit('phaseProgress', { phase:'hints', submitted, total: (r.active?.size || 0) });
+        if (r.active && submitted === r.active.size) controller.maybeStartVoting(code);
+      } else if (r.state === 'voting') {
+        const submitted = Array.from(r.active || []).filter(id => !!r.players.get(id)?.vote).length;
+        io.to(code).emit('phaseProgress', { phase:'voting', submitted, total: (r.active?.size || 0) });
+        if (r.active && submitted === r.active.size) controller.finishVoting(code);
+      }
+
+      // cas spécial : l’imposteur a quitté pendant la manche → victoire équipiers immédiate
+      if (wasImpostor && (r.state === 'hints' || r.state === 'voting')) {
+        clearRoomTimer(r);
+        for (const id of r.active || []) {
+          const p = r.players.get(id);
+          if (p && !p.isImpostor) p.score = (p.score || 0) + 1;
+        }
+
+        io.to(code).emit('roundResult', {
+          round: r.round,
+          impostorId: socket.id,
+          impostorName: name,
+          common: r.words?.common,
+          impostor: r.words?.impostor,
+          commonDisplay: r.words?.common,
+          impostorDisplay: r.words?.impostor,
+          votes: {},
+          impostorCaught: true,
+          domain: r.words?.domain
+        });
+
+        r.state = 'reveal';
+        r.readyNext = new Set();
+        io.to(code).emit('readyProgress', { ready: 0, total: r.players.size });
+
+        // fin de partie éventuelle (seuil 10)
+        const arr = Array.from(r.players.values());
+        const maxScore = Math.max(0, ...arr.map(p => p.score || 0));
+        if (maxScore >= 10) {
+          const winnersArr = Array.from(r.players.entries())
+            .filter(([_, p]) => (p.score || 0) === maxScore)
+            .map(([id, p]) => ({ id, name: p.name, score: p.score || 0 }));
+          io.to(code).emit('gameOver', { winners: winnersArr, round: r.round, autoReset: true });
+
+          for (const p of r.players.values()) { p.score = 0; p.hint = null; p.vote = null; p.isImpostor = false; }
+          r.round = 0; r.state = 'lobby'; r.lobbyReady = new Set(); r.readyNext = new Set(); r.used = {};
+          clearRoomTimer(r);
+        }
       }
 
       broadcast(io, code);

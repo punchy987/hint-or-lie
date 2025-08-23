@@ -63,13 +63,22 @@
       panel.style.display = visible ? 'none' : 'block';
       $('btn-how').textContent = visible ? 'Règles rapides' : 'Masquer les règles';
     });
+$('btn-ready')?.addEventListener('click', () => {
+  const roomState = window.HOL?.state?.room?.state;
 
-    // Lobby: prêt / retour accueil
-    $('btn-ready')?.addEventListener('click', () => {
-      state.myLobbyReady = !state.myLobbyReady;
-      $('btn-ready').textContent = state.myLobbyReady ? 'Annuler prêt' : 'Je suis prêt';
-      socket.emit('playerReadyLobby', { ready: state.myLobbyReady });
-    });
+  // Si on est en RÉSULTATS, on branche sur le même flux que "Manche suivante"
+  if (roomState === 'reveal') {
+    socket.emit('playerReadyNext');
+    const br = $('btn-ready');
+    if (br) { br.textContent = 'Prêt ✓'; br.disabled = true; }
+    return;
+  }
+
+  // Sinon, comportement normal du lobby
+  state.myLobbyReady = !state.myLobbyReady;
+  $('btn-ready').textContent = state.myLobbyReady ? 'Annuler prêt' : 'Je suis prêt';
+  socket.emit('playerReadyLobby', { ready: state.myLobbyReady });
+});
 
     $('btn-back-home')?.addEventListener('click', () => {
       socket.emit('leaveRoom');
@@ -85,17 +94,22 @@
 
   function initSocketRoom() {
     const s = socket;
-
+    // message système (toast)
+    s.on('system', ({ text }) => toast(text));
+    s.on('host-changed', ({ hostId }) => {
+  // Si tu as un badge "👑", l’afficher seulement si c’est moi le nouvel hôte
+  const hb = $('host-badge');
+  if (hb) hb.style.display = (window.HOL.state.me.id === hostId) ? 'inline-block' : 'none';});
     s.on('connect', () => {
       s.emit('getLeaderboard');
       state.me.id = s.id;
       console.log('socket connected', s.id);
     });
     const codeSpan = HOL.$('lobby-code');
-if (codeSpan && !codeSpan._wired) {
-  codeSpan._wired = true;
-  const pill = codeSpan.parentElement;
-  if (pill) {
+    if (codeSpan && !codeSpan._wired) {
+    codeSpan._wired = true;
+    const pill = codeSpan.parentElement;
+    if (pill) {
     pill.style.cursor = 'pointer';
     pill.title = 'Copier le code';
     pill.addEventListener('click', async () => {

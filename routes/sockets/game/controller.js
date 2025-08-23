@@ -19,23 +19,31 @@ function createController({ io, upsertRoundResult, applyPenaltyIfNotWinner, HINT
     r.lobbyReady = new Set();
     r.readyNext  = new Set();
 
-    const ids = Array.from(r.players.keys());
-    if (ids.length < 3) {
+    // Fige les joueurs actifs pour TOUT le round
+    r.active = new Set(Array.from(r.players.keys()));
+
+    if (r.active.size < 3) {
       io.to(code).emit('errorMsg', 'Minimum 3 joueurs');
       r.state = 'lobby';
       return broadcast(io, code);
     }
 
+    // Reset des états de round
     for (const p of r.players.values()) {
-      p.hint = null; p.vote = null; p.isImpostor = false;
+      p.hint = null;
+      p.vote = null;
+      p.isImpostor = false;
     }
 
+    // Tirage des mots
     const pair = pickPairSmart(r);
     r.words = { common: pair.common, impostor: pair.impostor, domain: pair.domain };
     r.lastDomain = pair.domain;
     r.lastCommon = pair.common;
 
-    const impId = ids[Math.floor(Math.random() * ids.length)];
+    // Choix de l’imposteur parmi les actifs
+    const activeIds = Array.from(r.active);
+    const impId = activeIds[Math.floor(Math.random() * activeIds.length)];
     r.impostor = impId;
     const imp = r.players.get(impId);
     if (imp) imp.isImpostor = true;
@@ -46,7 +54,10 @@ function createController({ io, upsertRoundResult, applyPenaltyIfNotWinner, HINT
     r.round = (r.round || 0) + 1;
     r.state = 'hints';
 
-    for (const [id, p] of r.players.entries()) {
+    // Envoi des mots seulement aux actifs
+    for (const id of r.active) {
+      const p = r.players.get(id);
+      if (!p) continue;
       const myword = p.isImpostor ? r.words.impostor : r.words.common;
       io.to(id).emit('roundInfo', {
         word: myword,
@@ -59,11 +70,15 @@ function createController({ io, upsertRoundResult, applyPenaltyIfNotWinner, HINT
 
     if (r.impostor) io.to(r.impostor).emit('crewHintsLive', { hints: r.liveCrewHints });
 
-    io.to(code).emit('phaseProgress', { phase: 'hints', submitted: 0, total: ids.length, round: r.round });
+    io.to(code).emit('phaseProgress', { phase: 'hints', submitted: 0, total: r.active.size, round: r.round });
 
     startPhaseTimer(io, code, HINT_SECONDS, 'hints', () => {
       const room = rooms.get(code); if (!room) return;
-      for (const p of room.players.values()) if (typeof p.hint !== 'string') p.hint = '';
+      // Hints vides pour les ACTIFS qui n’ont rien envoyé
+      for (const id of room.active) {
+        const p = room.players.get(id);
+        if (p && typeof p.hint !== 'string') p.hint = '';
+      }
       maybeStartVoting(code);
     });
 
@@ -74,16 +89,17 @@ function createController({ io, upsertRoundResult, applyPenaltyIfNotWinner, HINT
     const r = rooms.get(code); if (!r) return;
     if (r.state !== 'hints') return;
 
-    const submitted = Array.from(r.players.values()).filter(p => typeof p.hint === 'string').length;
-    const total = r.players.size;
+    const submitted = Array.from(r.active).filter(id => typeof r.players.get(id)?.hint === 'string').length;
+    const total = r.active.size;
 
     if (submitted === total) {
       clearRoomTimer(r);
       r.state = 'voting';
 
-      const hintsPayload = Array.from(r.players.entries()).map(([id, p]) => ({
-        id, name: p.name, hint: p.hint || ''
-      }));
+      const hintsPayload = Array.from(r.active).map(id => {
+        const p = r.players.get(id);
+        return { id, name: p?.name, hint: p?.hint || '' };
+      });
       io.to(code).emit('hintsList', hintsPayload);
 
       startPhaseTimer(io, code, VOTE_SECONDS, 'voting', () => finishVoting(code));
@@ -98,10 +114,13 @@ function createController({ io, upsertRoundResult, applyPenaltyIfNotWinner, HINT
     clearRoomTimer(r);
 
     let impId = null;
-    for (const [id, p] of r.players.entries()) if (p.isImpostor) { impId = id; break; }
+    for (const id of r.active) { if (r.players.get(id)?.isImpostor) { impId = id; break; } }
 
     const tally = {};
-    for (const p of r.players.values()) if (p.vote) tally[p.vote] = (tally[p.vote] || 0) + 1;
+    for (const id of r.active) {
+      const p = r.players.get(id);
+      if (p?.vote) tally[p.vote] = (tally[p.vote] || 0) + 1;
+    }
 
     let top = null, max = -1;
     for (const [candidate, v] of Object.entries(tally)) if (v > max) { max = v; top = candidate; }
@@ -109,14 +128,17 @@ function createController({ io, upsertRoundResult, applyPenaltyIfNotWinner, HINT
     const caught = (top === impId);
 
     if (caught) {
-      for (const p of r.players.values()) if (!p.isImpostor) p.score = (p.score || 0) + 1;
+      for (const id of r.active) {
+        const p = r.players.get(id);
+        if (p && !p.isImpostor) p.score = (p.score || 0) + 1;
+      }
     } else {
       const imp = r.players.get(impId);
       if (imp) imp.score = (imp.score || 0) + 2;
     }
 
     const winners = new Set();
-    if (caught) for (const [id, p] of r.players.entries()) if (!p.isImpostor) winners.add(id);
+    if (caught) for (const id of r.active) if (!r.players.get(id)?.isImpostor) winners.add(id);
     else if (impId) winners.add(impId);
 
     for (const [id, p] of r.players.entries()) {
@@ -144,6 +166,7 @@ function createController({ io, upsertRoundResult, applyPenaltyIfNotWinner, HINT
     io.to(code).emit('readyProgress', { ready: 0, total: r.players.size });
     broadcast(io, code);
 
+    // Fin de partie (10 pts)
     const arr = Array.from(r.players.values());
     const maxScore = Math.max(0, ...arr.map(p => p.score || 0));
 
