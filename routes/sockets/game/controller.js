@@ -5,9 +5,8 @@ const { rooms, broadcast } =
   require(path.join(__dirname, '..', 'state', 'room.js'));
 const { labelWordByDomain } =
   require(path.join(__dirname, 'words.js'));
-const { pickPairSmart } =
-  require(path.join(__dirname, 'picker.js'));
-const { clearRoomTimer, startPhaseTimer } =
+ const { pickPair } =
+ require(path.join(__dirname, 'picker.js'));const { clearRoomTimer, startPhaseTimer } =
   require(path.join(__dirname, '..', 'timer.js'));
 
 function createController({ io, upsertRoundResult, applyPenaltyIfNotWinner, HINT_SECONDS, VOTE_SECONDS }) {
@@ -36,7 +35,7 @@ function createController({ io, upsertRoundResult, applyPenaltyIfNotWinner, HINT
     }
 
     // Tirage des mots
-    const pair = pickPairSmart(r);
+    const pair = pickPair(r);
     r.words = { common: pair.common, impostor: pair.impostor, domain: pair.domain };
     r.lastDomain = pair.domain;
     r.lastCommon = pair.common;
