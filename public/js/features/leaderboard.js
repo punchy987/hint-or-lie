@@ -82,24 +82,24 @@
 (function () {
   const { $, socket } = window.HOL;
 
-  function getHlRank(rp) {
-    const x = Number(rp) || 0;
-    if (x >= 200) return 'Diamant';
-    if (x >= 150) return 'Platine';
-    if (x >= 120) return 'Or';
-    if (x >= 80)  return 'Argent';
-    if (x >= 40)  return 'Bronze';
-    return 'Novice';
-  }
+function getHlRank(rp) {
+  const x = Number(rp) || 0;
+  if (x >= 200) return 'Maître';
+  if (x >= 150) return 'Diamant';
+  if (x >= 120) return 'Or';
+  if (x >= 80)  return 'Argent';
+  if (x >= 40)  return 'Bronze';
+  return 'Novice';
+}
 
-  const ICON = {
-    'Novice':  '🟢',
-    'Bronze':  '🟤',
-    'Argent':  '⚪',
-    'Or':      '🟡',
-    'Platine': '🔵',
-    'Diamant': '💎',
-  };
+const ICON = {
+  'Novice':  "⚪",
+  'Bronze':  "🥉",
+  'Argent':  "🥈",
+  'Or':      "🥇",
+  'Diamant': "💎",
+  'Maître':  "👑",   // 👑 ou 🎯 ou 🏆 → choisis ton symbole
+};
 
   function render(list) {
     const ul = $('lb-list'); if (!ul) return;

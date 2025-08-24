@@ -2,10 +2,9 @@
 // routes/utils/hlrank.js
 // Paliers HL Rank + pénalités
 
-function getHlRank(rpTotal) {
-  const rp = Number(rpTotal) || 0;
-  if (rp >= 200) return 'Diamant';
-  if (rp >= 150) return 'Platine';
+function getHlRank(rp) {
+  if (rp >= 200) return 'Maître';
+  if (rp >= 150) return 'Diamant';
   if (rp >= 120) return 'Or';
   if (rp >= 80)  return 'Argent';
   if (rp >= 40)  return 'Bronze';
@@ -13,13 +12,14 @@ function getHlRank(rpTotal) {
 }
 
 function getPenaltyByRank(rank) {
-  switch (rank) {
-    case 'Diamant': return 5;
-    case 'Platine': return 4;
-    case 'Or':      return 3;
-    case 'Argent':  return 2;
-    case 'Bronze':  return 1;
-    default:        return 0; // Novice
+  switch(rank) {
+    case 'Maître':   return 5;
+    case 'Diamant':  return 4;
+    case 'Or':       return 3;
+    case 'Argent':   return 2;
+    case 'Bronze':   return 1;
+    case 'Novice':   return 0;
+    default: return 0;
   }
 }
 
