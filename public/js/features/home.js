@@ -212,4 +212,48 @@ $('btn-ready')?.addEventListener('click', () => {
 
   window.HOL.features = window.HOL.features || {};
   window.HOL.features.home = { init };
+  
+  (function () {
+  const { $, socket, state } = window.HOL;
+
+  function wireInviteButton() {
+    const btn = $('btn-invite');
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      const code = state.room?.code || ($('#lobby-code')?.textContent || '').trim();
+      const name = state.me?.name || ($('#name-create')?.value || $('#name-join')?.value || '');
+      if (!code) return window.HOL.toast('Code de salle introuvable');
+      window.HOL.shareInviteLink({ code, name });
+    });
+  }
+
+  function autoJoinFromURL() {
+    const q = new URLSearchParams(location.search);
+    const code = q.get('code');
+    const n = q.get('n');
+    if (!code) return;
+
+    // Bascule onglet "Rejoindre"
+    $('#tab-join')?.click();
+
+    const codeInput = $('join-code');
+    const nameInput = $('name-join');
+    if (codeInput) codeInput.value = code;
+    if (nameInput && n) nameInput.value = n.slice(0, 16);
+
+    // Rejoindre direct si pseudo présent
+    if (codeInput?.value && (nameInput?.value || $('#name-create')?.value)) {
+      socket.emit('joinRoom', { code: codeInput.value, name: nameInput?.value });
+    }
+  }
+
+  // Décorer l'init existant
+  const origInit = window.HOL.features.home.init;
+  window.HOL.features.home.init = function () {
+    origInit();
+    wireInviteButton();
+    autoJoinFromURL();
+  };
+})();
+
 })();

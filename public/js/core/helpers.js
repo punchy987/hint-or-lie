@@ -108,4 +108,39 @@
 
   // défini dans state.js; no-op ici pour éviter les erreurs avant chargement
   HOL.updateScoreboard = HOL.updateScoreboard || function () {};
+  async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast('Lien copié ✅');
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); ta.remove();
+    toast('Lien copié ✅');
+  }
+}
+
+async function shareInviteLink({ code, name }) {
+  const base = location.origin + location.pathname; // ex: https://ton-domaine/
+  const params = new URLSearchParams();
+  params.set('code', code);
+  if (name) params.set('n', name);
+  const url = `${base}?${params.toString()}`;
+
+  if (navigator.share) {
+    try {
+      await navigator.share({
+        title: '🔗 Rejoins ma partie — Hint or Lie',
+        text: `Viens jouer ! Code ${code}`,
+        url
+      });
+      return;
+    } catch (_) { /* annulation → on copie */ }
+  }
+  await copyToClipboard(url);
+}
+
+// Expose pour qu'on l'appelle depuis home.js
+window.HOL.shareInviteLink = shareInviteLink;
+
 })();
