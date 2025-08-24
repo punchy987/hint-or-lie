@@ -51,9 +51,19 @@
     liveBox.className = 'tip'; // réutilise ton style .tip
     liveBox.style.marginTop = '8px';
     liveBox.innerHTML = `<strong>Indices des équipiers (live)</strong><ul id="crew-live-list" style="margin:6px 0 0 18px"></ul>`;
-    parent.appendChild(liveBox);
+    placeLiveBoxAboveScoreboard();
     liveList = liveBox.querySelector('#crew-live-list');
   }
+  function placeLiveBoxAboveScoreboard() {
+  if (!liveBox) return;
+  const parent = document.getElementById('screen-hint') || document.body;
+  const sb = document.getElementById('scoreboard');
+  if (sb && sb.parentElement === parent) {
+    parent.insertBefore(liveBox, sb);   // 👉 place le live juste au-dessus du scoreboard
+  } else {
+    parent.appendChild(liveBox);        // fallback si pas de scoreboard monté
+  }
+}
   function liveClear() { if (liveList) liveList.innerHTML = ''; }
   function liveAdd({ name, hint }) {
     if (!liveList) return;
@@ -120,8 +130,7 @@
       $('timer-reveal')   && ( $('timer-reveal').textContent   = '--:--' );
 
       // Live imposteur
-      if (isImpostor) { ensureLiveUI(); liveBox.style.display = 'block'; liveClear(); }
-      else if (liveBox) { liveBox.style.display = 'none'; liveClear(); }
+ if (isImpostor) { ensureLiveUI(); liveBox.style.display = 'block'; liveClear(); placeLiveBoxAboveScoreboard(); }      else if (liveBox) { liveBox.style.display = 'none'; liveClear(); }
     });
 
     // Progression (serveur envoie submitted/total)
