@@ -133,17 +133,23 @@ function createController({ io, upsertRoundResult, applyPenaltyIfNotWinner, HINT
     let impId = null;
     for (const id of r.active) { if (r.players.get(id)?.isImpostor) { impId = id; break; } }
 
+    // Tally des votes
     const tally = {};
     for (const id of r.active) {
       const p = r.players.get(id);
       if (p?.vote) tally[p.vote] = (tally[p.vote] || 0) + 1;
     }
 
-    let top = null, max = -1;
-    for (const [candidate, v] of Object.entries(tally)) if (v > max) { max = v; top = candidate; }
+    // 👉 Démasqué SEULEMENT si top unique ET que c'est l'imposteur
+    let max = -1;
+    let leaders = [];
+    for (const [candidate, v] of Object.entries(tally)) {
+      if (v > max) { max = v; leaders = [candidate]; }
+      else if (v === max) { leaders.push(candidate); }
+    }
+    const caught = (leaders.length === 1 && leaders[0] === impId);
 
-    const caught = (top === impId);
-
+    // Attribution des points
     if (caught) {
       for (const id of r.active) {
         const p = r.players.get(id);
@@ -154,6 +160,7 @@ function createController({ io, upsertRoundResult, applyPenaltyIfNotWinner, HINT
       if (imp) imp.score = (imp.score || 0) + 2;
     }
 
+    // Détermination des vainqueurs de la manche
     const winners = new Set();
     if (caught) for (const id of r.active) if (!r.players.get(id)?.isImpostor) winners.add(id);
     else if (impId) winners.add(impId);
