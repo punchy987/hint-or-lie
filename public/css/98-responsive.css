@@ -32,3 +32,22 @@
   .signature-badge{ font-size:12px; padding:4px 8px }
   #modal .box{ max-width:92vw; width:92vw; padding:14px }
 }
+/* === PATCH responsive: chips & phase bar === */
+@media (max-width: 520px) {
+  /* On fait passer la zone chips (phase-center) sur une ligne à part */
+  .phase-center {
+    flex: 1 1 100%;
+    justify-content: center;
+    order: 3;              /* passe en dessous */
+  }
+
+  .kpi { font-size: 12px; }  /* compacter un peu */
+
+  /* Tronquer un peu plus sur mobile */
+  .theme-chip b { max-width: 10ch; }
+}
+
+@media (max-width: 360px) {
+  .theme-chip { padding: 2px 6px; }
+  .theme-chip b { max-width: 8ch; }
+}

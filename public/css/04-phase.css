@@ -77,3 +77,41 @@
 .phase-bar + *{
   margin-top: 10px;
 }
+/* === PATCH: phase bar + chips (desktop + par défaut) === */
+.phase-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap; /* autorise le retour à la ligne si besoin */
+}
+
+.phase-center {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;  /* plusieurs lignes si nécessaire */
+  min-width: 0;     /* permet l'ellipsis à l'intérieur */
+}
+
+/* Style commun des chips (Thème / Mot) */
+.theme-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* Tronquer le texte de la valeur dans la chip */
+.theme-chip b {
+  display: inline-block;
+  max-width: 14ch;      /* ajuste si tu veux plus/moins long */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+/* petit espace quand plusieurs chips se suivent */
+.theme-chip + .theme-chip { margin-left: 6px; }

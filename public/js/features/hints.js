@@ -1,7 +1,6 @@
 // public/js/features/hints.js
 // Phase INDICES : affiche mot/rôle + Enter pour envoyer + messages d'erreur + progression
-// ➕ Si imposteur : affiche en LIVE les indices des équipiers (crewHintsLive / crewHintAdded)
-//     et place le bloc "indices live" ENTRE l'instruction et la zone de saisie.
+// ➕ Si imposteur : affiche en LIVE les indices des équipiers et place le bloc live au-dessus de l'input.
 
 (function () {
   const { $, $$, toast, show, state, socket, resetPhaseProgress, onEnter } = window.HOL;
@@ -14,25 +13,24 @@
   const ui = {
     role:   () => $('my-role'),
     theme:  () => $('theme-hint-name'),
-    word:   () => $('my-word'),
+    word:   () => $('my-word'),              // ancien bloc, on le garde mais on le cache
     tip:    () => $('impostor-tip'),
     input:  () => $('hint-input'),
     send:   () => $('btn-send-hint'),
     status: () => $('hint-status'),
     instr:  () => $('hint-instruction'),
+    // NEW: chip du mot (équipiers seulement)
+    wordChip:     () => $('crew-word-chip'),
+    wordChipText: () => $('crew-word'),
   };
 
-  // Écran actuel = "Indices" ?
   function onHintScreen() {
     return document.body.getAttribute('data-screen') === 'screen-hint';
   }
 
-  function setRound(num) {
-    $$('.round-live').forEach(el => el.textContent = String(num || 0));
-  }
+  function setRound(num) { $$('.round-live').forEach(el => el.textContent = String(num || 0)); }
   function setProgressHints(sub, total) {
-    const el = $('progress-hints');
-    if (el) el.textContent = `${sub}/${total}`;
+    const el = $('progress-hints'); if (el) el.textContent = `${sub}/${total}`;
   }
   function clearStatus() {
     const s = ui.status(); if (s) s.textContent = '';
@@ -61,28 +59,6 @@
     liveList = liveBox.querySelector('#crew-live-list');
   }
 
-  // Place le bloc live ENTRE l'instruction et la zone de saisie (uniquement sur l'écran Indices)
-  function placeLiveBoxBetweenInstructionAndInput() {
-    if (!liveBox || !onHintScreen()) return;
-    const parent = document.getElementById('screen-hint') || document.body;
-
-    // B) bloc saisie
-    const inputEl =
-      (ui.input && ui.input()) ||
-      document.getElementById('hint') ||
-      parent.querySelector('#hint-form, #hint-box') ||
-      parent.querySelector('input[type="text"], textarea');
-
-    const inputBox = inputEl ? (inputEl.closest('.row, .card, div') || inputEl.parentElement) : null;
-
-    // Insérer juste AVANT le bloc de saisie, dans le même parent
-    if (inputBox && inputBox.parentElement) {
-      inputBox.parentElement.insertBefore(liveBox, inputBox);
-      liveBox.style.marginTop = '10px';
-      liveBox.style.marginBottom = '10px';
-    }
-  }
-
   function liveClear() { if (liveList) liveList.innerHTML = ''; }
   function liveAdd({ name, hint }) {
     if (!liveList) return;
@@ -96,10 +72,8 @@
   function sendHint() {
     if (locked || sending) return;
     const val = (ui.input()?.value || '').trim();
-
     if (!val) { showError("Écris un indice 😉"); return; }
     if (val.length > 40) { showError("Indice trop long (40 car. max)."); return; }
-
     sending = true;
     clearStatus();
     disableInputs(true);
@@ -116,84 +90,66 @@
   // ————— Socket / cycle de vie —————
   function initSocket() {
     socket.on('roundInfo', ({ word, wordDisplay, isImpostor, domain, round }) => {
-  // Reset affichage & état
-  state.myIsImpostor = !!isImpostor;
-  sending = false; locked = false;
+      // Reset affichage & état
+      state.myIsImpostor = !!isImpostor;
+      sending = false; locked = false;
 
-  show('screen-hint');
-  resetPhaseProgress();
+      show('screen-hint');
+      resetPhaseProgress();
 
-// Thème / rôle / astuce
-if (ui.theme()) ui.theme().textContent = domain || '—';
-  state.roundDomain = domain || '';
-if (ui.role()) {
-  ui.role().textContent = isImpostor ? 'Imposteur' : 'Équipier';
-  ui.role().className = 'role ' + (isImpostor ? 'imp' : 'crew');
-}
+      // Thème / rôle
+      if (ui.theme()) ui.theme().textContent = domain || '—';
+      state.roundDomain = domain || '';
+      if (ui.role()) {
+        ui.role().textContent = isImpostor ? 'Imposteur' : 'Équipier';
+        ui.role().className = 'role ' + (isImpostor ? 'imp' : 'crew');
+      }
 
-// Tip imposteur
-if (ui.tip()) {
-  if (isImpostor) {
-    ui.tip().style.display = 'block';
-    ui.tip().textContent = "🤫 Tu n’as pas de mot. Observe les indices et invente un indice crédible.";
-  } else {
-    ui.tip().style.display = 'none';
-  }
-}
+      // Tip / Mot / Instruction / Chip selon le rôle
+      const tipEl  = ui.tip();
+      const wordEl = ui.word();          // ancien grand bloc
+      const instr  = ui.instr();
+      const chip   = ui.wordChip();
+      const chipTxt= ui.wordChipText();
 
-// Mot + instruction (équipiers seulement)
-if (ui.word()) {
-  if (isImpostor) {
-    ui.word().style.display = 'none';
-  } else {
-    ui.word().style.display = 'block';
-    ui.word().textContent = wordDisplay || word || '—';
-  }
-}
-if (ui.instr()) {
-  if (isImpostor) {
-    ui.instr().style.display = 'none';
-  } else {
-    ui.instr().style.display = 'block';
-    ui.instr().textContent = "Donne 1 indice lié au mot sans le révéler. 📌";
-  }
-}
-function setDisplay(el, value) { if (el) el.style.display = value; }
+      if (isImpostor) {
+        if (tipEl)  { tipEl.style.display = 'block';
+                      tipEl.textContent = "🤫 Tu n’as pas de mot. Observe les indices et invente un indice crédible."; }
+        if (wordEl) { wordEl.style.display = 'none'; wordEl.textContent = ''; }
+        if (instr)  { instr.style.display = 'none'; }
+        if (chip)   { chip.style.display = 'none'; if (chipTxt) chipTxt.textContent = ''; }
+      } else {
+        if (tipEl)  tipEl.style.display = 'none';
+        // on masque l’ancien gros bloc et on utilise la chip à la place
+        if (wordEl) { wordEl.style.display = 'none'; }
+        if (instr)  { instr.style.display = '';
+                      instr.textContent = "Donne 1 indice lié au mot sans le révéler. 📌"; }
+        if (chip)   { chip.style.display = ''; if (chipTxt) chipTxt.textContent = wordDisplay || word || '—'; }
+      }
 
-// Affiche/masque les textes "Ton mot" et l'instruction
-function toggleHintTexts(show) {
-  setDisplay(ui.word(),  show ? '' : 'none');
-  setDisplay(ui.instr(), show ? '' : 'none');
-}
+      // Champ & boutons
+      clearStatus();
+      if (ui.input()) { ui.input().value = ''; ui.input().disabled = false; }
+      if (ui.send())  ui.send().disabled = false;
 
-  // 👉 Masquer totalement ces deux textes si imposteur, sinon les montrer
-  toggleHintTexts(!isImpostor);
+      // UI annexes
+      setRound(round);
+      $('progress-hints') && ( $('progress-hints').textContent = '0/0' );
+      $('progress-vote')  && ( $('progress-vote').textContent  = '0/0' );
+      $('timer-vote')     && ( $('timer-vote').textContent     = '00:40' );
+      $('timer-reveal')   && ( $('timer-reveal').textContent   = '--:--' );
 
-  // Champ & boutons
-  clearStatus();
-  if (ui.input()) { ui.input().value = ''; ui.input().disabled = false; }
-  if (ui.send())  ui.send().disabled = false;
+      // Live imposteur : insérer juste au-dessus du champ "Ton indice"
+      if (isImpostor) {
+        ensureLiveUI();
+        liveBox.style.display = 'block';
+        liveClear();
+        ui.input()?.insertAdjacentElement('beforebegin', liveBox);
+      } else {
+        if (liveBox) { liveBox.style.display = 'none'; liveClear(); }
+      }
+    });
 
-  // UI annexes
-  setRound(round);
-  $('progress-hints') && ( $('progress-hints').textContent = '0/0' );
-  $('progress-vote')  && ( $('progress-vote').textContent  = '0/0' );
-  $('timer-vote')     && ( $('timer-vote').textContent     = '00:40' );
-  $('timer-reveal')   && ( $('timer-reveal').textContent   = '--:--' );
-
-  // Live imposteur : insérer juste au-dessus du champ "Ton indice"
-  if (isImpostor) {
-    ensureLiveUI();
-    liveBox.style.display = 'block';
-    liveClear();
-    ui.input()?.insertAdjacentElement('beforebegin', liveBox); // => avant le bloc de saisie
-  } else {
-    if (liveBox) { liveBox.style.display = 'none'; liveClear(); }
-  }
-});
-
-
-    // Progression (serveur envoie submitted/total)
     socket.on('phaseProgress', ({ phase, submitted, total, round }) => {
       if (phase === 'hints') {
         setProgressHints(submitted, total);
@@ -201,7 +157,6 @@ function toggleHintTexts(show) {
       }
     });
 
-    // Accusés de réception
     socket.on('hintAck', () => {
       locked = true; sending = false;
       disableInputs(true);
@@ -209,7 +164,6 @@ function toggleHintTexts(show) {
     });
 
     socket.on('hintRejected', ({ reason } = {}) => {
-      // Rejet serveur (mot/thème identique, interdit, doublon, etc.)
       sending = false; locked = false;
       disableInputs(false);
       showError(reason);
@@ -231,22 +185,16 @@ function toggleHintTexts(show) {
       ui.input()?.insertAdjacentElement('beforebegin', liveBox);
     });
 
-    // Filets de sécurité : sortie de la phase Indices
+    // Filets de sécurité
     socket.on('timer', ({ phase, leftMs }) => {
       if (phase === 'hints' && leftMs <= 0) {
         locked = true; sending = false;
         disableInputs(true);
       }
-      // Dès que la phase vote démarre → on cache le live
-      if (phase === 'voting' && liveBox) {
-        liveBox.style.display = 'none';
-      }
+      if (phase === 'voting' && liveBox) liveBox.style.display = 'none';
     });
 
-    // Quand la liste des indices de vote arrive (début du vote) → cache aussi
-    socket.on('hintsList', () => {
-      if (liveBox) liveBox.style.display = 'none';
-    });
+    socket.on('hintsList', () => { if (liveBox) liveBox.style.display = 'none'; });
   }
 
   function init() { initUI(); initSocket(); }
