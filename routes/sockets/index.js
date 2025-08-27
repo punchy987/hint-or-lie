@@ -217,8 +217,7 @@ module.exports = function setupSockets(io, db){
 
       const raw = String(hint||'').trim().slice(0,40);
 
-      const mySecret = p.isImpostor ? r.words.impostor : r.words.common;
-      const check = isHintAllowed(mySecret, raw, r.words.domain);
+      const mySecret = r.words.common;      const check = isHintAllowed(mySecret, raw, r.words.domain);
       if (!check.ok) return socket.emit('hintRejected', { reason: check.reason });
 
       r.usedHints ||= new Set();
@@ -370,9 +369,9 @@ module.exports = function setupSockets(io, db){
           impostorId: socket.id,
           impostorName: name,
           common: r.words?.common,
-          impostor: r.words?.impostor,
-          commonDisplay: r.words?.common,
-          impostorDisplay: r.words?.impostor,
+           impostor: null,
+           commonDisplay: r.words?.common,
+            impostorDisplay: "—",
           votes: {},
           impostorCaught: true,
           domain: r.words?.domain

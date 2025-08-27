@@ -27,6 +27,13 @@
       } else if (phase === 'lobby') {
         const el = $('timer-lobby'); if (el) { el.textContent = fmt(leftMs); if (left <= 0) el.style.display = 'none'; }
       }
+        // 🔒 Filet de sécurité d’écran :
+  // si le serveur dit "voting" et qu'on est encore sur l'écran "hint",
+  // on bascule de force sur l'écran Vote.
+  if (phase === 'voting' && document.body.getAttribute('data-screen') === 'screen-hint') {
+    // show() est ton utilitaire qui change d'écran
+    window.HOL.show('screen-vote');
+  }
     });
   }
 

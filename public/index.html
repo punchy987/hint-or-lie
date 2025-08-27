@@ -22,7 +22,6 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180.png">
   <link rel="stylesheet" href="css/07-scoreboard.css">
   <link rel="stylesheet" href="css/08-lobby-header.css">
-
 </head>
 <body class="stars">
 
@@ -81,13 +80,13 @@
 
       <button class="btn-secondary" id="btn-how" type="button">Règles rapides</button>
       <div id="how" class="rules" style="display:none">
-         <h4>Règles — Hint or Lie</h4>
-  <ul>
-    <li>🎭 Un seul joueur a un mot différent — l’imposteur</li>
-    <li>✍️ Chacun donne 1 indice lié au thème sans le révéler</li>
-    <li>🚫 Pas deux fois le même indice, ni le mot exact, ni le thème</li>
-    <li>👀 Attention, l’imposteur voit les indices des équipiers</li>
-  </ul>
+        <h4>Règles — Hint or Lie</h4>
+        <ul>
+          <li>🎭 Un joueur n’a pas de mot — c’est l’imposteur</li>
+          <li>✍️ Les autres reçoivent un mot lié au thème et donnent 1 indice sans le révéler</li>
+          <li>🚫 Pas deux fois le même indice, ni le mot exact, ni le thème</li>
+          <li>👀 L’imposteur voit les indices des équipiers en direct et doit improviser</li>
+        </ul>
       </div>
 
       <div class="rules" id="lb" style="margin-top:10px">
@@ -121,15 +120,15 @@
       <div class="rules">
         <h4>Règles — Hint or Lie</h4>
         <ul>
-          <li>🎯 But du jeu — la plupart ont le même mot ; un joueur a un mot différent</li>
-    <li>🧩 Mise en place — chacun reçoit son mot ; le thème est commun</li>
-    <li>✍️ Phase Indices — chacun donne 1 indice lié au thème, sans le révéler</li>
-    <li>🔒 Unicité des indices — deux joueurs ne peuvent pas envoyer le même indice ; mot exact et thème refusés ; indice bloqué si interdit</li>
-    <li>🕵️ Aide imposteur — il voit en direct les indices des équipiers ; soyez malins</li>
-    <li>🗳️ Phase Vote — on choisit un suspect ; vote modifiable jusqu’à la fin</li>
-    <li>⚡ Fin du vote — quand tout le monde a voté, résultats immédiats ; sinon à la fin du chrono</li>
-    <li>⭐ Points — équipiers +1 si l’imposteur est trouvé ; sinon imposteur +2</li>
-    <li>🏁 Victoire — premier à 10 points</li>
+          <li>🎯 But du jeu — la plupart ont le même mot ; l’imposteur n’a aucun mot</li>
+          <li>🧩 Mise en place — chacun reçoit son mot, sauf l’imposteur qui n’en a pas</li>
+          <li>✍️ Phase Indices — chacun donne 1 indice lié au mot/thème sans le révéler</li>
+          <li>🔒 Unicité des indices — pas deux fois le même indice ; mot exact et thème interdits</li>
+          <li>🕵️ Aide imposteur — il voit les indices des équipiers en direct et doit inventer</li>
+          <li>🗳️ Phase Vote — on choisit un suspect ; vote modifiable jusqu’à la fin</li>
+          <li>⚡ Fin du vote — quand tout le monde a voté, résultats immédiats ; sinon à la fin du chrono</li>
+          <li>⭐ Points — équipiers +1 si l’imposteur est trouvé ; sinon imposteur +2</li>
+          <li>🏁 Victoire — premier à 10 points</li>
         </ul>
       </div>
     </div>
@@ -150,11 +149,10 @@
         </div>
       </div>
 
-      <div id="impostor-tip" class="tip">🎭 <em>Même thème, autre mot. Fais croire que tu es l’un d’eux.</em></div>
+      <!-- Nouveau texte imposteur (affiché/masqué par hints.js selon le rôle) -->
+      <div id="impostor-tip" class="tip">🤫 Tu n’as pas de mot. Observe les indices et invente un indice crédible.</div>
 
-      <h3 class="section-title">Ton mot</h3>
-      <div id="my-word" class="hint-word">?</div>
-      <p class="muted" id="hint-instruction" style="margin-top:6px">Donne 1 mot lié au thème sans le révéler. 📌</p>
+      <!-- Plus de "Ton mot" / instruction : simplification -->
       <input id="hint-input" placeholder="Ton indice" maxlength="40" />
       <div class="row"><button id="btn-send-hint" type="button">Envoyer l'indice</button></div>
       <p class="muted" id="hint-status"></p>
@@ -196,7 +194,7 @@
 
       <div id="personal-banner" class="result-banner">Résultat</div>
       <h3 class="section-title">Résumé</h3>
-      <p>Mot commun : <strong id="res-common"></strong> — Mot imposteur : <strong id="res-imp"></strong></p>
+      <p>Mot commun : <strong id="res-common"></strong> <strong id="res-imp"></strong></p>
       <p>Imposteur : <strong id="res-imp-name"></strong></p>
       <div id="res-votes" style="margin:8px 0"></div>
       <div class="row"><button id="btn-next" type="button" style="display:none">Manche suivante</button></div>

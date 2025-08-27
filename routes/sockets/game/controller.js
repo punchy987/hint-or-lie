@@ -5,8 +5,9 @@ const { rooms, broadcast } =
   require(path.join(__dirname, '..', 'state', 'room.js'));
 const { labelWordByDomain } =
   require(path.join(__dirname, 'words.js'));
- const { pickPair } =
- require(path.join(__dirname, 'picker.js'));const { clearRoomTimer, startPhaseTimer } =
+const { pickPair } =
+  require(path.join(__dirname, 'picker.js'));
+const { clearRoomTimer, startPhaseTimer } =
   require(path.join(__dirname, '..', 'timer.js'));
 
 function createController({ io, upsertRoundResult, applyPenaltyIfNotWinner, HINT_SECONDS, VOTE_SECONDS }) {
@@ -34,9 +35,9 @@ function createController({ io, upsertRoundResult, applyPenaltyIfNotWinner, HINT
       p.isImpostor = false;
     }
 
-    // Tirage des mots
+    // Tirage des mots (imposteur n'a PAS de mot)
     const pair = pickPair(r);
-    r.words = { common: pair.common, impostor: pair.impostor, domain: pair.domain };
+    r.words = { common: pair.common, impostor: null, domain: pair.domain };
     r.lastDomain = pair.domain;
     r.lastCommon = pair.common;
 
@@ -53,24 +54,38 @@ function createController({ io, upsertRoundResult, applyPenaltyIfNotWinner, HINT
     r.round = (r.round || 0) + 1;
     r.state = 'hints';
 
-    // Envoi des mots seulement aux actifs
+    // Envoi des infos de manche aux ACTIFS
     for (const id of r.active) {
       const p = r.players.get(id);
       if (!p) continue;
-      const myword = p.isImpostor ? r.words.impostor : r.words.common;
-      io.to(id).emit('roundInfo', {
-        word: myword,
-        wordDisplay: labelWordByDomain(myword, r.words.domain),
-        isImpostor: !!p.isImpostor,
-        domain: r.words.domain,
-        round: r.round,
-      });
+
+      if (p.isImpostor) {
+        io.to(id).emit('roundInfo', {
+          word: null,
+          wordDisplay: 'Aucun mot — observe les indices',
+          isImpostor: true,
+          domain: r.words.domain,
+          round: r.round,
+        });
+      } else {
+        const myword = r.words.common;
+        io.to(id).emit('roundInfo', {
+          word: myword,
+          wordDisplay: labelWordByDomain(myword, r.words.domain),
+          isImpostor: false,
+          domain: r.words.domain,
+          round: r.round,
+        });
+      }
     }
 
+    // L'imposteur reçoit le flux live des indices d'équipiers
     if (r.impostor) io.to(r.impostor).emit('crewHintsLive', { hints: r.liveCrewHints });
 
+    // Progress initial
     io.to(code).emit('phaseProgress', { phase: 'hints', submitted: 0, total: r.active.size, round: r.round });
 
+    // Timer phase indices
     startPhaseTimer(io, code, HINT_SECONDS, 'hints', () => {
       const room = rooms.get(code); if (!room) return;
       // Hints vides pour les ACTIFS qui n’ont rien envoyé
@@ -103,6 +118,9 @@ function createController({ io, upsertRoundResult, applyPenaltyIfNotWinner, HINT
 
       startPhaseTimer(io, code, VOTE_SECONDS, 'voting', () => finishVoting(code));
       broadcast(io, code);
+    } else {
+      // Mise à jour de la progression si tout le monde n'a pas encore soumis
+      io.to(code).emit('phaseProgress', { phase: 'hints', submitted, total, round: r.round });
     }
   }
 
@@ -140,24 +158,26 @@ function createController({ io, upsertRoundResult, applyPenaltyIfNotWinner, HINT
     if (caught) for (const id of r.active) if (!r.players.get(id)?.isImpostor) winners.add(id);
     else if (impId) winners.add(impId);
 
+    // Persistance (si Firestore branché)
     for (const [id, p] of r.players.entries()) {
       const didWin = winners.has(id);
       if (p?.deviceId) {
-        upsertRoundResult({ deviceId: p.deviceId, pseudo: p.name, didWin, isImpostor: !!p.isImpostor });
+        upsertRoundResult?.({ deviceId: p.deviceId, pseudo: p.name, didWin, isImpostor: !!p.isImpostor });
       }
     }
 
+    // Résultat de manche — pas de mot imposteur
     io.to(code).emit('roundResult', {
       round: r.round,
       impostorId: impId,
       impostorName: r.players.get(impId)?.name,
       common: r.words.common,
-      impostor: r.words.impostor,
+      impostor: null,
       commonDisplay: labelWordByDomain(r.words.common, r.words.domain),
-      impostorDisplay: labelWordByDomain(r.words.impostor, r.words.domain),
+      impostorDisplay: '—',
       votes: tally,
       impostorCaught: caught,
-      domain: r.words.domain
+      domain: r.words.domain,
     });
 
     r.state = 'reveal';
@@ -185,6 +205,7 @@ function createController({ io, upsertRoundResult, applyPenaltyIfNotWinner, HINT
         }
       }
 
+      // reset complet
       for (const p of r.players.values()) {
         p.score = 0; p.hint = null; p.vote = null; p.isImpostor = false;
       }

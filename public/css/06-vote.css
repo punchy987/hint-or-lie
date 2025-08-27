@@ -47,3 +47,4 @@
   border-radius:8px; color:#ffe696; font-size:.95rem; font-style:italic;
   display:none; box-shadow: 0 10px 24px rgba(255,230,150,.08);
 }
+#res-imp:empty { display: none; }

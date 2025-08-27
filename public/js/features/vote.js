@@ -1,6 +1,6 @@
 // Phase "Vote" — re-cliquable jusqu’à la fin du timer
 (function () {
-  const { $, show, socket, resetPhaseProgress } = window.HOL;
+  const { $, show, socket, resetPhaseProgress, state } = window.HOL; // + state ✅
 
   let myTarget = null;     // dernier choix local
   let votingClosed = false;
@@ -13,6 +13,17 @@
       p.appendChild(document.createTextNode((h.name || 'Joueur') + ' : ' + (h.hint || '')));
       box.appendChild(p);
     });
+  }
+
+  // Fixe le thème avec fallback: payload.domain -> state.roundDomain -> ce qui est déjà affiché
+  function setVoteTheme(domainMaybe) {
+    const text =
+      (domainMaybe && String(domainMaybe).trim()) ||
+      (state?.roundDomain && String(state.roundDomain).trim()) ||
+      ($('theme-hint-name')?.textContent?.trim()) ||
+      '—';
+    const el = $('theme-vote-name');
+    if (el) el.textContent = text;
   }
 
   function buildVoteButtons(hints) {
@@ -41,7 +52,7 @@
     });
   }
 
-  // 👇 handler commun pour recevoir la liste des indices
+  // Handler commun pour recevoir la liste des indices (nouveau et ancien format)
   function handleHintsForVote(hints, domain, round) {
     votingClosed = false;
     myTarget = null;
@@ -49,7 +60,7 @@
     show('screen-vote');
     resetPhaseProgress();
 
-    const theme = $('theme-vote-name'); if (theme) theme.textContent = domain || theme.textContent || '?';
+    setVoteTheme(domain);       // ✅ fixe "Thème : ..."
     renderHints(hints);
     buildVoteButtons(hints);
 
@@ -57,12 +68,16 @@
   }
 
   function initSocket() {
-    // ✅ Nouvel event (serveur actuel) — le payload est un ARRAY de hints
-    socket.on('hintsList', (hints) => {
-      handleHintsForVote(hints, /*domain*/ null, /*round*/ null);
+    // Format actuel: payload peut être un array (hints) ou un objet {hints, domain, round}
+    socket.on('hintsList', (payload) => {
+      const isArray = Array.isArray(payload);
+      const hints  = isArray ? payload           : (payload?.hints  || []);
+      const domain = isArray ? null              : (payload?.domain ?? null);
+      const round  = isArray ? null              : (payload?.round  ?? null);
+      handleHintsForVote(hints, domain, round);
     });
 
-    // 🧩 Compatibilité avec anciennes versions (objet { hints, domain, round })
+    // Compat ancien event
     socket.on('allHints', ({ hints, domain, round }) => {
       handleHintsForVote(hints, domain, round);
     });
@@ -70,12 +85,12 @@
     socket.on('phaseProgress', ({ phase, submitted, total }) => {
       if (phase === 'voting') {
         const elv = $('progress-vote'); if (elv) elv.textContent = `${submitted}/${total}`;
-        // ⚠️ NE PAS désactiver quand tout le monde a voté : on autorise le changement
+        // on laisse les boutons actifs jusqu'à la fin
       }
     });
 
     socket.on('voteAck', () => {
-      // Option: petit feedback si tu veux (toast), mais on ne verrouille pas.
+      // Option: feedback visuel si tu veux (toast), sans verrouiller.
       // window.HOL.toast?.('Vote enregistré (modifiable jusqu’à la fin)');
     });
 
