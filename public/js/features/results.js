@@ -1,6 +1,7 @@
 // Phase "Résultat" + prêt manche suivante
 (function () {
-  const { $, el, show, socket, state } = window.HOL;
+  // + toast (tu l’utilises plus bas)
+  const { $, el, show, socket, state, toast } = window.HOL;
 
   function initUI() {
     $('btn-next').onclick = () => {
@@ -17,8 +18,17 @@
 
       $('res-domain').textContent = res.domain || '?';
       $('res-common').textContent = res.common || '';
-      $('res-imp').textContent = res.impostor || '';
+
+      // L’imposteur n’a PAS de mot (on laisse un tiret visuel si l’élément existe)
+      if ($('res-imp')) $('res-imp').textContent = '—';
+
       $('res-imp-name').textContent = res.impostorName || '(?)';
+
+      // ✅ Nouveau : mensonge = indice de l’imposteur envoyé par le serveur
+      // (serveur: io.to(code).emit('roundResult', { ..., impostorHint })
+      const lie = res.impostorHint || '—';
+      const lieEl = $('res-imp-lie') || $('res-imp-word'); // compat si tu as déjà créé res-imp-word
+      if (lieEl) lieEl.textContent = lie;
 
       // bannière perso
       let win = false, text = '';

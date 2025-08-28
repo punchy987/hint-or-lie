@@ -123,7 +123,7 @@
         // on masque l’ancien gros bloc et on utilise la chip à la place
         if (wordEl) { wordEl.style.display = 'none'; }
         if (instr)  { instr.style.display = '';
-                      instr.textContent = "Donne 1 indice lié au mot sans le révéler. 📌"; }
+                      instr.textContent = "D✍️ Trouve un indice malin, sans trahir ton mot !"; }
         if (chip)   { chip.style.display = ''; if (chipTxt) chipTxt.textContent = wordDisplay || word || '—'; }
       }
 

@@ -217,7 +217,8 @@ module.exports = function setupSockets(io, db){
 
       const raw = String(hint||'').trim().slice(0,40);
 
-      const mySecret = r.words.common;      const check = isHintAllowed(mySecret, raw, r.words.domain);
+      const mySecret = r.words.common;
+      const check = isHintAllowed(mySecret, raw, r.words.domain);
       if (!check.ok) return socket.emit('hintRejected', { reason: check.reason });
 
       r.usedHints ||= new Set();
@@ -247,25 +248,91 @@ module.exports = function setupSockets(io, db){
       broadcast(io, joined.code);
     });
 
-    // ---- submitVote
-    socket.on('submitVote', ({ targetId })=>{
-      const r = rooms.get(joined.code); if(!r || r.state!=='voting') return;
-      if (!r.players.has(targetId)) return;
-      const p = r.players.get(socket.id); if(!p) return;
+// ---- submitHint
+socket.on('submitHint', ({ hint })=>{
+  const r = rooms.get(joined.code); if(!r || r.state!=='hints') return;
+  const p = r.players.get(socket.id); if(!p) return;
 
-      // Spectateur : pas d’action
-      if (!r.active?.has(socket.id)) return socket.emit('errorMsg', 'Tu voteras à la prochaine manche (spectateur)');
+  // Spectateur : pas d’action
+  if (!r.active?.has(socket.id)) return socket.emit('errorMsg', 'Tu participeras au prochain tour (spectateur)');
+  if (typeof p.hint === 'string') return;
 
-      p.vote = targetId;
-      socket.emit('voteAck');
+  const raw = String(hint||'').trim().slice(0,40);
 
-      const submitted = Array.from(r.active).filter(id => !!r.players.get(id)?.vote).length;
-      io.to(joined.code).emit('phaseProgress', { phase:'voting', submitted, total: r.active.size });
+  const mySecret = r.words.common;
+  const check = isHintAllowed(mySecret, raw, r.words.domain);
+  if (!check.ok) return socket.emit('hintRejected', { reason: check.reason });
 
-      if (submitted === r.active.size) controller.finishVoting(joined.code);
-      else broadcast(io, joined.code);
-    });
+  r.usedHints ||= new Set();
+  const key = normalizeLocal(raw);
+  if (r.usedHints.has(key)) return socket.emit('hintRejected', { reason: "Indice déjà utilisé par un autre joueur." });
+  r.usedHints.add(key);
 
+  p.hint = raw;
+  socket.emit('hintAck');
+
+  if (!p.isImpostor) {
+    r.liveCrewHints ||= [];
+    const item = { id: socket.id, name: p.name, hint: raw };
+    r.liveCrewHints.push({ name: p.name, hint: raw });
+
+    if (r.impostor) {
+      const impSock = io.sockets.sockets.get(r.impostor);
+      if (impSock) impSock.emit('crewHintAdded', item);
+      else io.to(r.impostor).emit('crewHintAdded', item);
+    }
+  }
+
+  const submitted = Array.from(r.active).filter(id => typeof r.players.get(id)?.hint === 'string').length;
+  io.to(joined.code).emit('phaseProgress', { phase:'hints', submitted, total: r.active.size });
+
+  controller.maybeStartVoting(joined.code);
+  broadcast(io, joined.code);
+}); // ←←← IMPORTANT : on ferme submitHint ICI
+
+// ---- submitVote (indépendant, au même niveau que submitHint)
+socket.on('submitVote', ({ hintId, targetId } = {}) => {
+  const r = rooms.get(joined.code); if (!r || r.state !== 'voting') return;
+  const me = r.players.get(socket.id); if (!me) return;
+
+  // Spectateur
+  if (!r.active?.has(socket.id)) {
+    return socket.emit('errorMsg', 'Tu voteras à la prochaine manche (spectateur)');
+  }
+
+  // Résolution robuste de l'auteur à partir de l'indice
+  let authorId = null;
+  if (hintId && r.hintAuthor && typeof r.hintAuthor.get === 'function') {
+    authorId = r.hintAuthor.get(hintId) || null; // format nouveau
+  }
+  if (!authorId && targetId && r.players.has(targetId)) {
+    authorId = targetId; // rétro-compat: targetId = playerId
+  }
+  if (!authorId && hintId && r.players.has(hintId)) {
+    authorId = hintId; // rétro-compat: anciens payloads (id == playerId)
+  }
+  if (!authorId) return;
+
+  // Enregistre le vote (toujours un playerId)
+  me.vote = authorId;
+  socket.emit('voteAck');
+
+  // Compteur
+  const submitted = Array.from(r.active).reduce(
+    (acc, id) => acc + (r.players.get(id)?.vote ? 1 : 0),
+    0
+  );
+  const total = r.active.size;
+
+  io.to(joined.code).emit('phaseProgress', { phase: 'voting', submitted, total });
+
+  // Fin anticipée
+  if (submitted === total) {
+    controller.finishVoting(joined.code);
+  } else {
+    broadcast(io, joined.code);
+  }
+});
     // ---- playerReadyNext (reveal -> manche suivante)
     socket.on('playerReadyNext', ()=>{
       const r = rooms.get(joined.code); if(!r) return; if (r.state !== 'reveal') return;
@@ -369,9 +436,10 @@ module.exports = function setupSockets(io, db){
           impostorId: socket.id,
           impostorName: name,
           common: r.words?.common,
-           impostor: null,
-           commonDisplay: r.words?.common,
-            impostorDisplay: "—",
+          impostor: null,
+          impostorHint,
+          commonDisplay: r.words?.common,
+          impostorDisplay: "—",
           votes: {},
           impostorCaught: true,
           domain: r.words?.domain

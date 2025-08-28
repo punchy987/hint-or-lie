@@ -28,12 +28,16 @@ function createController({ io, upsertRoundResult, applyPenaltyIfNotWinner, HINT
       return broadcast(io, code);
     }
 
-    // Reset des états de round
+    // Reset des états de round (par joueur)
     for (const p of r.players.values()) {
       p.hint = null;
       p.vote = null;
       p.isImpostor = false;
     }
+
+    // === NEW: structures pour vote par indice anonyme ===
+    r.hints = [];                 // [{ id, playerId, text, ts }]
+    r.hintAuthor = new Map();     // hintId -> playerId
 
     // Tirage des mots (imposteur n'a PAS de mot)
     const pair = pickPair(r);
@@ -110,10 +114,21 @@ function createController({ io, upsertRoundResult, applyPenaltyIfNotWinner, HINT
       clearRoomTimer(r);
       r.state = 'voting';
 
-      const hintsPayload = Array.from(r.active).map(id => {
+      // === NEW: reconstruire la liste d'indices anonymes + mapping auteur ===
+      r.hints = [];
+      r.hintAuthor = new Map();
+      const now = Date.now();
+
+      for (const id of r.active) {
         const p = r.players.get(id);
-        return { id, name: p?.name, hint: p?.hint || '' };
-      });
+        const text = ((p?.hint || '').trim());
+        const hid  = `H_${r.round || 1}_${id}`; // id stable pour ce round
+        r.hints.push({ id: hid, playerId: id, text, ts: now });
+        r.hintAuthor.set(hid, id);
+      }
+
+      // === NEW: payload anonyme (tableau) pour compat client ===
+      const hintsPayload = r.hints.map(h => ({ id: h.id, hint: h.text }));
       io.to(code).emit('hintsList', hintsPayload);
 
       startPhaseTimer(io, code, VOTE_SECONDS, 'voting', () => finishVoting(code));
@@ -133,7 +148,17 @@ function createController({ io, upsertRoundResult, applyPenaltyIfNotWinner, HINT
     let impId = null;
     for (const id of r.active) { if (r.players.get(id)?.isImpostor) { impId = id; break; } }
 
-    // Tally des votes
+    // === NEW: conversion éventuelle des votes "hintId" -> "playerId"
+    if (r.hintAuthor && typeof r.hintAuthor.get === 'function') {
+      for (const id of r.active) {
+        const p = r.players.get(id);
+        if (p?.vote && r.hintAuthor.has(p.vote)) {
+          p.vote = r.hintAuthor.get(p.vote);
+        }
+      }
+    }
+
+    // Tally des votes (sur playerId)
     const tally = {};
     for (const id of r.active) {
       const p = r.players.get(id);
@@ -172,20 +197,26 @@ function createController({ io, upsertRoundResult, applyPenaltyIfNotWinner, HINT
         upsertRoundResult?.({ deviceId: p.deviceId, pseudo: p.name, didWin, isImpostor: !!p.isImpostor });
       }
     }
+// ... (après calcul de `caught`, attribution des points, winners, etc.)
 
-    // Résultat de manche — pas de mot imposteur
-    io.to(code).emit('roundResult', {
-      round: r.round,
-      impostorId: impId,
-      impostorName: r.players.get(impId)?.name,
-      common: r.words.common,
-      impostor: null,
-      commonDisplay: labelWordByDomain(r.words.common, r.words.domain),
-      impostorDisplay: '—',
-      votes: tally,
-      impostorCaught: caught,
-      domain: r.words.domain,
-    });
+// 👉 Récupère l'indice (mensonge) tapé par l'imposteur pour l'afficher dans le résumé
+const impostorHint =
+  (Array.isArray(r.hints) ? r.hints.find(h => h.playerId === impId)?.text : '') || '—';
+
+// Résultat de manche — version officielle
+io.to(code).emit('roundResult', {
+  round: r.round,
+  impostorId: impId,
+  impostorName: r.players.get(impId)?.name,
+  common: r.words.common,
+  impostor: null,                        // l’imposteur n’a pas de mot dans ta V2
+  impostorHint,                          // ✅ NOUVEAU
+  commonDisplay: labelWordByDomain(r.words.common, r.words.domain),
+  impostorDisplay: '—',
+  votes: tally,
+  impostorCaught: caught,
+  domain: r.words.domain,
+});
 
     r.state = 'reveal';
     r.readyNext = new Set();

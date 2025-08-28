@@ -1,19 +1,9 @@
 // Phase "Vote" — re-cliquable jusqu’à la fin du timer
 (function () {
-  const { $, show, socket, resetPhaseProgress, state } = window.HOL; // + state ✅
+  const { $, show, socket, resetPhaseProgress, state } = window.HOL;
 
-  let myTarget = null;     // dernier choix local
+  let myTarget = null;     // dernier choix local (hintId)
   let votingClosed = false;
-
-  function renderHints(hints) {
-    const box = $('hints'); if (!box) return;
-    box.innerHTML = '';
-    (hints || []).forEach(h => {
-      const p = document.createElement('p');
-      p.appendChild(document.createTextNode((h.name || 'Joueur') + ' : ' + (h.hint || '')));
-      box.appendChild(p);
-    });
-  }
 
   // Fixe le thème avec fallback: payload.domain -> state.roundDomain -> ce qui est déjà affiché
   function setVoteTheme(domainMaybe) {
@@ -26,29 +16,53 @@
     if (el) el.textContent = text;
   }
 
-  function buildVoteButtons(hints) {
-    const cont = $('vote-buttons'); if (!cont) return;
-    cont.innerHTML = '';
-    (hints || []).forEach(h => {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.textContent = h.name || 'Joueur';
-      b.dataset.id = h.id;
+  // Rendu : liste d’indices anonymes, chacun avec son bouton "Voter" rouge compact aligné à droite
+  function renderHintsWithVote(hints) {
+    const box = $('hints'); if (!box) return;
+    const legacyButtons = $('vote-buttons'); // plus utilisé
+    if (legacyButtons) legacyButtons.innerHTML = '';
 
-      b.onclick = () => {
+    box.style.display = '';   // on (ré)affiche la liste
+    box.classList.add('hints-table'); // grid compacte
+    box.innerHTML = '';
+
+    (hints || []).forEach(h => {
+      const row = document.createElement('div');
+      row.className = 'hint-row';
+
+      const txt = document.createElement('span');
+      txt.className = 'hint-text';
+      const full = (h.text ?? h.hint ?? '').toString().trim();
+      txt.textContent = full || '—';
+      txt.title = full; // tooltip
+
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn-vote-red';
+      btn.dataset.id = h.id;
+      btn.textContent = 'Voter';
+
+      btn.onclick = () => {
         if (votingClosed) return;
         myTarget = h.id;
 
-        // visuel : un seul bouton "sélectionné"
-        cont.querySelectorAll('button').forEach(x => {
-          x.classList.toggle('selected', x.dataset.id === String(myTarget));
-        });
+        // visuel: un seul bouton sélectionné
+        box.querySelectorAll('.btn-vote-red').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
 
-        // on (ré)envoie le vote à chaque clic — le serveur garde la dernière valeur
-        socket.emit('submitVote', { targetId: h.id });
+        socket.emit('submitVote', { hintId: h.id });
+
+        // petit boost UX: on incrémente le compteur localement, le serveur recalcule derrière
+        const pv = $('progress-vote');
+        if (pv) {
+          const [cur, tot] = (pv.textContent || '0/0').split('/').map(x => parseInt(x, 10) || 0);
+          if (cur < tot) pv.textContent = `${cur + 1}/${tot}`;
+        }
       };
 
-      cont.appendChild(b);
+      row.appendChild(txt);
+      row.appendChild(btn);
+      box.appendChild(row);
     });
   }
 
@@ -60,32 +74,40 @@
     show('screen-vote');
     resetPhaseProgress();
 
-    setVoteTheme(domain);       // ✅ fixe "Thème : ..."
-    renderHints(hints);
-    buildVoteButtons(hints);
+    setVoteTheme(domain);           // ✅ fixe "Thème : ..."
+    renderHintsWithVote(hints);     // ⬅️ liste + bouton rouge par ligne
 
     const pv = $('progress-vote'); if (pv) pv.textContent = `0/${(hints || []).length}`;
   }
 
   function initSocket() {
-    // Format actuel: payload peut être un array (hints) ou un objet {hints, domain, round}
+    // Format nouveau: { hints:[{id,text}], domain, round }
+    // Compat ancien:  [ {id, name, hint}, ... ]
     socket.on('hintsList', (payload) => {
-      const isArray = Array.isArray(payload);
-      const hints  = isArray ? payload           : (payload?.hints  || []);
-      const domain = isArray ? null              : (payload?.domain ?? null);
-      const round  = isArray ? null              : (payload?.round  ?? null);
+      const raw = Array.isArray(payload) ? payload : (payload?.hints || []);
+      const hints = raw.map(h => ({
+        id: h.id,
+        // supporte h.text (nouveau) et h.hint (ancien)
+        text: (typeof h.text === 'string') ? h.text : (h.hint || '')
+      }));
+      const domain = Array.isArray(payload) ? null : (payload?.domain ?? null);
+      const round  = Array.isArray(payload) ? null : (payload?.round  ?? null);
       handleHintsForVote(hints, domain, round);
     });
 
-    // Compat ancien event
+    // Compat ancien event si jamais
     socket.on('allHints', ({ hints, domain, round }) => {
-      handleHintsForVote(hints, domain, round);
+      const mapped = (hints || []).map(h => ({
+        id: h.id,
+        text: (typeof h.text === 'string') ? h.text : (h.hint || '')
+      }));
+      handleHintsForVote(mapped, domain, round);
     });
 
+    // Mise à jour serveur du compteur (prend la main sur le local si émis)
     socket.on('phaseProgress', ({ phase, submitted, total }) => {
       if (phase === 'voting') {
         const elv = $('progress-vote'); if (elv) elv.textContent = `${submitted}/${total}`;
-        // on laisse les boutons actifs jusqu'à la fin
       }
     });
 
@@ -98,12 +120,49 @@
     socket.on('timer', ({ phase, leftMs }) => {
       if (phase === 'voting' && leftMs <= 0) {
         votingClosed = true;
-        const cont = $('vote-buttons');
-        cont?.querySelectorAll('button').forEach(b => b.disabled = true);
+        document.querySelectorAll('.btn-vote-red').forEach(b => b.disabled = true);
       }
     });
   }
+function renderHintsWithVote(hints) {
+  const box = $('hints'); if (!box) return;
+  const legacyButtons = $('vote-buttons'); if (legacyButtons) legacyButtons.innerHTML = '';
 
+  box.style.display = '';
+  box.classList.add('hints-table');   // ← important
+  box.innerHTML = '';
+
+  (hints || []).forEach(h => {
+    const row = document.createElement('div');
+    row.className = 'hint-row';
+
+    const txt = document.createElement('span');
+    txt.className = 'hint-text';
+    const full = (h.text ?? h.hint ?? '').toString().trim();
+    txt.textContent = full || '—';
+    txt.title = full;
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn-vote-red';
+    btn.dataset.id = h.id;
+    btn.textContent = 'Voter';
+
+    btn.onclick = () => {
+      if (votingClosed) return;
+      myTarget = h.id;
+
+      box.querySelectorAll('.btn-vote-red').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+
+      socket.emit('submitVote', { hintId: h.id });
+    };
+
+    row.appendChild(txt);
+    row.appendChild(btn);
+    box.appendChild(row);
+  });
+}
   function init() { initSocket(); }
   window.HOL.features = window.HOL.features || {};
   window.HOL.features.vote = { init };
