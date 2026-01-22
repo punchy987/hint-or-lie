@@ -215,3 +215,29 @@ button:hover { background: var(--primary-hover); }
 }
 
 @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+/* === AJOUTS AMBIANCE (JUICE) === */
+
+/* Thème Équipier (Bleu rassurant) */
+.theme-crew {
+  background-image: radial-gradient(circle at top, #1e1b4b 0%, #0f0b14 100%);
+}
+
+/* Thème Imposteur (Rouge danger) */
+.theme-impostor {
+  background-image: radial-gradient(circle at top, #450a0a 0%, #0f0b14 100%);
+}
+.theme-impostor .card {
+  border: 1px solid #ef4444;
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.2);
+}
+
+/* Animation Flash */
+@keyframes flash-red {
+  0% { background-color: #ef4444; }
+  100% { background-color: var(--bg); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
