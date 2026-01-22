@@ -248,91 +248,50 @@ module.exports = function setupSockets(io, db){
       broadcast(io, joined.code);
     });
 
-// ---- submitHint
-socket.on('submitHint', ({ hint })=>{
-  const r = rooms.get(joined.code); if(!r || r.state!=='hints') return;
-  const p = r.players.get(socket.id); if(!p) return;
+    // ---- submitVote
+    socket.on('submitVote', ({ hintId, targetId } = {}) => {
+      const r = rooms.get(joined.code); if (!r || r.state !== 'voting') return;
+      const me = r.players.get(socket.id); if (!me) return;
 
-  // Spectateur : pas d’action
-  if (!r.active?.has(socket.id)) return socket.emit('errorMsg', 'Tu participeras au prochain tour (spectateur)');
-  if (typeof p.hint === 'string') return;
+      // Spectateur
+      if (!r.active?.has(socket.id)) {
+        return socket.emit('errorMsg', 'Tu voteras à la prochaine manche (spectateur)');
+      }
 
-  const raw = String(hint||'').trim().slice(0,40);
+      // Résolution robuste de l'auteur à partir de l'indice
+      let authorId = null;
+      if (hintId && r.hintAuthor && typeof r.hintAuthor.get === 'function') {
+        authorId = r.hintAuthor.get(hintId) || null; // format nouveau
+      }
+      if (!authorId && targetId && r.players.has(targetId)) {
+        authorId = targetId; // rétro-compat: targetId = playerId
+      }
+      if (!authorId && hintId && r.players.has(hintId)) {
+        authorId = hintId; // rétro-compat: anciens payloads (id == playerId)
+      }
+      if (!authorId) return;
 
-  const mySecret = r.words.common;
-  const check = isHintAllowed(mySecret, raw, r.words.domain);
-  if (!check.ok) return socket.emit('hintRejected', { reason: check.reason });
+      // Enregistre le vote (toujours un playerId)
+      me.vote = authorId;
+      socket.emit('voteAck');
 
-  r.usedHints ||= new Set();
-  const key = normalizeLocal(raw);
-  if (r.usedHints.has(key)) return socket.emit('hintRejected', { reason: "Indice déjà utilisé par un autre joueur." });
-  r.usedHints.add(key);
+      // Compteur
+      const submitted = Array.from(r.active).reduce(
+        (acc, id) => acc + (r.players.get(id)?.vote ? 1 : 0),
+        0
+      );
+      const total = r.active.size;
 
-  p.hint = raw;
-  socket.emit('hintAck');
+      io.to(joined.code).emit('phaseProgress', { phase: 'voting', submitted, total });
 
-  if (!p.isImpostor) {
-    r.liveCrewHints ||= [];
-    const item = { id: socket.id, name: p.name, hint: raw };
-    r.liveCrewHints.push({ name: p.name, hint: raw });
+      // Fin anticipée
+      if (submitted === total) {
+        controller.finishVoting(joined.code);
+      } else {
+        broadcast(io, joined.code);
+      }
+    });
 
-    if (r.impostor) {
-      const impSock = io.sockets.sockets.get(r.impostor);
-      if (impSock) impSock.emit('crewHintAdded', item);
-      else io.to(r.impostor).emit('crewHintAdded', item);
-    }
-  }
-
-  const submitted = Array.from(r.active).filter(id => typeof r.players.get(id)?.hint === 'string').length;
-  io.to(joined.code).emit('phaseProgress', { phase:'hints', submitted, total: r.active.size });
-
-  controller.maybeStartVoting(joined.code);
-  broadcast(io, joined.code);
-}); // ←←← IMPORTANT : on ferme submitHint ICI
-
-// ---- submitVote (indépendant, au même niveau que submitHint)
-socket.on('submitVote', ({ hintId, targetId } = {}) => {
-  const r = rooms.get(joined.code); if (!r || r.state !== 'voting') return;
-  const me = r.players.get(socket.id); if (!me) return;
-
-  // Spectateur
-  if (!r.active?.has(socket.id)) {
-    return socket.emit('errorMsg', 'Tu voteras à la prochaine manche (spectateur)');
-  }
-
-  // Résolution robuste de l'auteur à partir de l'indice
-  let authorId = null;
-  if (hintId && r.hintAuthor && typeof r.hintAuthor.get === 'function') {
-    authorId = r.hintAuthor.get(hintId) || null; // format nouveau
-  }
-  if (!authorId && targetId && r.players.has(targetId)) {
-    authorId = targetId; // rétro-compat: targetId = playerId
-  }
-  if (!authorId && hintId && r.players.has(hintId)) {
-    authorId = hintId; // rétro-compat: anciens payloads (id == playerId)
-  }
-  if (!authorId) return;
-
-  // Enregistre le vote (toujours un playerId)
-  me.vote = authorId;
-  socket.emit('voteAck');
-
-  // Compteur
-  const submitted = Array.from(r.active).reduce(
-    (acc, id) => acc + (r.players.get(id)?.vote ? 1 : 0),
-    0
-  );
-  const total = r.active.size;
-
-  io.to(joined.code).emit('phaseProgress', { phase: 'voting', submitted, total });
-
-  // Fin anticipée
-  if (submitted === total) {
-    controller.finishVoting(joined.code);
-  } else {
-    broadcast(io, joined.code);
-  }
-});
     // ---- playerReadyNext (reveal -> manche suivante)
     socket.on('playerReadyNext', ()=>{
       const r = rooms.get(joined.code); if(!r) return; if (r.state !== 'reveal') return;
@@ -437,7 +396,7 @@ socket.on('submitVote', ({ hintId, targetId } = {}) => {
           impostorName: name,
           common: r.words?.common,
           impostor: null,
-          impostorHint,
+          impostorHint: null, // FIX: évitera le crash
           commonDisplay: r.words?.common,
           impostorDisplay: "—",
           votes: {},
