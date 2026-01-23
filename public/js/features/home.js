@@ -1,5 +1,5 @@
 // public/js/features/home.js
-// VERSION : Client "Polyglotte" (Compatible Serveur Non-Modifié) 🌍
+// VERSION ULTIME : Polyglotte + Invite Propre + Clic Code 📋🤖
 
 (function () {
   // Sécurité chargement
@@ -81,12 +81,12 @@
         
         if (window.HOL.audio) window.HOL.audio.play('pop');
         
-        // ASTUCE : On envoie le code sous les deux noms pour être sûr que le serveur le trouve !
         if (window.HOL.socket) {
+            // On envoie tout ce qu'on a pour être sûr que le serveur comprenne
             window.HOL.socket.emit('joinRoom', { 
                 name: name, 
-                code: code,   // Pour ton serveur actuel
-                roomId: code  // Au cas où
+                code: code,
+                roomId: code
             });
         }
       };
@@ -113,17 +113,32 @@
       btnInvite.onclick = () => {
         const state = window.HOL.state;
         if (!state.roomCode) return;
+        // Lien propre sans le pseudo de l'hôte
         const inviteUrl = `${window.location.origin}/?code=${state.roomCode}`;
         navigator.clipboard.writeText(inviteUrl)
-          .then(() => alert("Lien copié !"))
+          .then(() => alert("Lien d'invitation copié ! 🔗"))
           .catch(e => console.error(e));
       };
     }
+    
+    // Feature : Clic sur le code pour copier (Ajout demandé)
+    const codeDisplay = document.getElementById('lobby-code');
+    if (codeDisplay) {
+        codeDisplay.style.cursor = 'pointer';
+        codeDisplay.title = "Cliquer pour copier le code";
+        codeDisplay.onclick = () => {
+            const code = codeDisplay.textContent;
+            if(code) {
+                navigator.clipboard.writeText(code)
+                    .then(() => alert(`Code ${code} copié !`))
+                    .catch(console.error);
+            }
+        };
+    }
   }
 
-  // Fonction pour entrer dans le lobby (factorisée)
+  // Entrée dans le lobby (Factorisé)
   function enterLobby(roomData) {
-      // Normalisation : le serveur envoie parfois 'code', parfois 'id'
       const realId = roomData.id || roomData.code;
       
       window.HOL.state.room = roomData;
@@ -137,11 +152,9 @@
       const codeDisplay = document.getElementById('lobby-code');
       if(codeDisplay) codeDisplay.textContent = realId;
 
-      // Si on a déjà des joueurs, on affiche, sinon on attend l'update
       if (roomData.players) {
         updateLobbyUI(roomData);
       } else {
-        // On affiche au moins le créateur (nous) en attendant la mise à jour serveur
         const myName = document.getElementById('name-create')?.value || 'Moi';
         updateLobbyUI({ players: [{ id: window.HOL.socket.id, name: myName, isHost: true }] });
       }
@@ -154,22 +167,19 @@
     s.off('roomJoined');
     s.off('roomCreated');
 
-    // Cas 1 : Le serveur envoie 'roomJoined' (Le Joiner)
+    // Serveur moderne
     s.on('roomJoined', (room) => {
-      console.log("✅ Room Joined reçue");
+      console.log("✅ Room Joined");
       enterLobby(room);
     });
 
-    // Cas 2 : Le serveur envoie SEULEMENT 'roomCreated' (Le Créateur)
-    // C'est ici le FIX pour ton serveur non-modifié
+    // Serveur ancien (Fix Créateur)
     s.on('roomCreated', (data) => {
-       console.log("✅ Room Created reçue (Fix Host)");
-       // On force l'entrée car le serveur ne nous enverra pas roomJoined
+       console.log("✅ Room Created (Fix Host)");
        enterLobby(data);
     });
 
     s.on('updatePlayerList', (players) => {
-      // On met à jour la liste sans tout recharger
       if (window.HOL.state.room) window.HOL.state.room.players = players;
       updateLobbyUI({ players });
     });
