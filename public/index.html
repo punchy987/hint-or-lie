@@ -24,7 +24,13 @@
   <link rel="stylesheet" href="css/08-lobby-header.css">
 </head>
 <body class="stars">
-
+<div id="role-reveal-overlay">
+    <div class="reveal-content">
+      <h2 class="reveal-sup">TU ES...</h2>
+      <h1 id="reveal-role-text">IMPOSTEUR</h1>
+    </div>
+  </div>
+  <div class="wrap">
   <!-- Bouton d’install PWA (affiché si possible par ton JS si tu veux) -->
   <button id="btn-install" type="button" style="display:none;position:sticky;top:0;width:100%;background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent-2) 35%, var(--accent) 65%));color:#4d0d17;border:0;padding:12px 16px;font-weight:800;">
     Installer l’app
@@ -213,6 +219,7 @@
   <p class="muted" id="toast" style="display:none;text-align:center" aria-live="polite"></p>
 
   <!-- Scripts: core, features, pwa, boot -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
   <script defer src="/js/core/dom.js"></script>
   <script defer src="/js/core/helpers.js"></script>
   <script defer src="/js/core/state.js"></script>
