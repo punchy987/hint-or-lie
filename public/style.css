@@ -255,3 +255,40 @@ button:disabled { opacity: 0.5; cursor: not-allowed; filter: grayscale(0.8); }
 
 @keyframes flash-red { 0% { background-color: #ef4444; } 100% { background-color: var(--bg); } }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
+/* === AJOUTS FINITIONS (Salon & Scoreboard Avatar) === */
+
+/* 1. Réparation du Header du Salon (Lobby) */
+#screen-lobby .row:first-of-type {
+  justify-content: center; /* Centre tous les éléments */
+  background: rgba(0,0,0,0.2); /* Fond sombre unifié */
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.05);
+  margin-bottom: 24px; /* Plus d'espace avant la liste des joueurs */
+  gap: 8px;
+}
+
+#screen-lobby .pill {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.1);
+  font-size: 0.85rem;
+  padding: 6px 12px;
+}
+
+/* 2. Mini Avatars dans le Scoreboard */
+.score-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.3);
+  background: #2a2535;
+  display: inline-block;
+}
+
+/* On ajuste l'alignement du texte dans la pilule de score */
+#score-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px; /* Espace entre l'avatar et le nom */
+  padding: 6px 12px 6px 8px; /* Un peu moins de marge à gauche pour l'image */
+}
