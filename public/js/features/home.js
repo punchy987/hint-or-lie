@@ -1,14 +1,15 @@
 // public/js/features/home.js
-// VERSION : Design Original (DiceBear) + Connexion Fixée 🎨🤖
+// VERSION : Logo HL + Avatars Bottts + Bouton Retour OK 🛠️
 
 (function () {
+  // Sécurité chargement
   if (!window.HOL) console.warn("HOL chargement...");
   const { $, show, socket, state, onEnter } = window.HOL || {};
 
-  // --- FONCTION AVATAR (Le retour des "vrais" robots) ---
+  // --- FONCTION AVATAR (DiceBear Bottts v9) ---
   function getAvatar(seed) {
-    // On utilise DiceBear v9 avec le style "bottts" (les robots carrés/ronds sympas)
-    // On encode le seed pour éviter les bugs avec les espaces ou caractères spéciaux
+    // Utilisation de l'API DiceBear v9 pour les robots "bottts"
+    // Encodage du seed pour éviter les erreurs d'URL
     return `https://api.dicebear.com/9.x/bottts/svg?seed=${encodeURIComponent(seed || 'anonyme')}`;
   }
 
@@ -28,34 +29,14 @@
       const inputName = document.getElementById('name-join');
       if (inputName) inputName.focus();
 
+      // Nettoyage de l'URL pour éviter de garder le code
       window.history.replaceState({}, document.title, "/");
     }
   }
 
-  // --- 2. Animation Avatar Accueil ---
-  function initAvatarPreview() {
-    // C'est cette fonction qui manquait !
-    // Elle met à jour l'image de l'accueil quand tu tapes.
-    
-    const heroImg = document.querySelector('.hero img');
-    const inputCreate = document.getElementById('name-create');
-    const inputJoin = document.getElementById('name-join');
-
-    // Fonction de mise à jour
-    const update = (e) => {
-        if (heroImg && e.target.value.trim()) {
-            heroImg.src = getAvatar(e.target.value);
-            heroImg.style.display = 'block'; // S'assure qu'il est visible
-        }
-    };
-
-    if (inputCreate) inputCreate.addEventListener('input', update);
-    if (inputJoin) inputJoin.addEventListener('input', update);
-  }
-
-  // --- 3. Actions Accueil ---
+  // --- 2. Actions Accueil ---
   function initHomeActions() {
-    // Onglets
+    // Navigation Onglets
     const btnTabJoin = document.getElementById('tab-join');
     const btnTabCreate = document.getElementById('tab-create');
     const paneJoin = document.getElementById('pane-join');
@@ -105,10 +86,16 @@
         const code = document.getElementById('join-code').value.trim().toUpperCase();
         
         if (!name || !code) return alert('Pseudo et Code requis !');
+        
         if (window.HOL.audio) window.HOL.audio.play('pop');
         
         if (window.HOL.socket) {
-            window.HOL.socket.emit('joinRoom', { name, code, roomId: code });
+            // Envoi du code sous les noms 'code' et 'roomId' pour compatibilité
+            window.HOL.socket.emit('joinRoom', { 
+                name: name, 
+                code: code,
+                roomId: code
+            });
         }
       };
 
@@ -119,7 +106,7 @@
     }
   }
 
-  // --- 4. Actions Lobby ---
+  // --- 3. Actions Lobby ---
   function initLobbyActions() {
     const btnReady = document.getElementById('btn-ready');
     if (btnReady) {
@@ -134,25 +121,47 @@
       btnInvite.onclick = () => {
         const state = window.HOL.state;
         if (!state.roomCode) return;
+        // Lien propre sans le pseudo de l'hôte
         const inviteUrl = `${window.location.origin}/?code=${state.roomCode}`;
         navigator.clipboard.writeText(inviteUrl)
           .then(() => alert("Lien d'invitation copié ! 🔗"))
           .catch(e => console.error(e));
       };
     }
-
+    
+    // Clic sur le code pour copier
     const codeDisplay = document.getElementById('lobby-code');
     if (codeDisplay) {
         codeDisplay.style.cursor = 'pointer';
         codeDisplay.title = "Cliquer pour copier le code";
         codeDisplay.onclick = () => {
             const code = codeDisplay.textContent;
-            if(code) navigator.clipboard.writeText(code).then(() => alert(`Code ${code} copié !`));
+            if(code) {
+                navigator.clipboard.writeText(code)
+                    .then(() => alert(`Code ${code} copié !`))
+                    .catch(console.error);
+            }
+        };
+    }
+
+    // Bouton RETOUR À L'ACCUEIL (AJOUTÉ)
+    const btnLeave = document.getElementById('btn-leave');
+    if (btnLeave) {
+        btnLeave.onclick = () => {
+            if (window.HOL.audio) window.HOL.audio.play('pop');
+            // On quitte la socket
+            if (window.HOL.socket) window.HOL.socket.emit('leaveRoom');
+            // On cache le lobby et on montre l'accueil
+            document.getElementById('screen-lobby').style.display = 'none';
+            document.getElementById('screen-home').style.display = 'block';
+            // On nettoie l'état
+            window.HOL.state.room = null;
+            window.HOL.state.roomCode = null;
         };
     }
   }
 
-  // --- Logique d'Entrée ---
+  // Entrée dans le lobby (Factorisé)
   function enterLobby(roomData) {
       const realId = roomData.id || roomData.code;
       
@@ -170,6 +179,7 @@
       if (roomData.players) {
         updateLobbyUI(roomData);
       } else {
+        // Affichage temporaire du créateur en attendant la mise à jour
         const myName = document.getElementById('name-create')?.value || 'Moi';
         updateLobbyUI({ players: [{ id: window.HOL.socket.id, name: myName, isHost: true }] });
       }
@@ -182,8 +192,17 @@
     s.off('roomJoined');
     s.off('roomCreated');
 
-    s.on('roomJoined', (room) => { console.log("✅ Room Joined"); enterLobby(room); });
-    s.on('roomCreated', (data) => { console.log("✅ Room Created (Fix Host)"); enterLobby(data); });
+    // Serveur moderne (Joiner)
+    s.on('roomJoined', (room) => {
+      console.log("✅ Room Joined");
+      enterLobby(room);
+    });
+
+    // Serveur ancien (Fix Host)
+    s.on('roomCreated', (data) => {
+       console.log("✅ Room Created (Fix Host)");
+       enterLobby(data);
+    });
 
     s.on('updatePlayerList', (players) => {
       if (window.HOL.state.room) window.HOL.state.room.players = players;
@@ -202,6 +221,7 @@
     let startBtn = document.getElementById('btn-start');
     const me = (room.players || []).find(p => p.id === window.HOL.socket.id);
     
+    // Bouton Démarrer la partie (Host uniquement)
     if (me && me.isHost) {
         if (!startBtn && actionsRow) {
             startBtn = document.createElement('button');
@@ -218,15 +238,16 @@
     const hostBadge = document.getElementById('host-badge');
     if (hostBadge) hostBadge.style.display = (me && me.isHost) ? 'block' : 'none';
 
+    // Liste Joueurs + Avatars DiceBear Bottts
     (room.players || []).forEach(p => {
       const row = document.createElement('div');
       row.className = 'player-item';
       row.style.cssText = 'display:flex;align-items:center;background:rgba(255,255,255,0.05);padding:10px;border-radius:12px;margin-bottom:8px;border:1px solid rgba(255,255,255,0.05);';
       
       const img = document.createElement('img');
-      // RETOUR DES VRAIS ROBOTS ! 🤖
+      // Utilisation de la fonction getAvatar pour les DiceBear Bottts
       img.src = getAvatar(p.name);
-      
+      // Style pour l'avatar
       img.style.cssText = 'width:40px;height:40px;border-radius:50%;margin-right:12px;background:#b6e3f4;border:2px solid rgba(255,255,255,0.1);';
       
       const txt = document.createElement('span');
@@ -244,6 +265,7 @@
       list.appendChild(row);
     });
     
+    // Compteurs de joueurs prêts
     const readyCount = (room.players || []).filter(p => p.isReady).length;
     const totalCount = (room.players || []).length;
     const readyPill = document.getElementById('lobby-ready-pill');
@@ -252,7 +274,7 @@
 
   function init() {
     initHomeActions();
-    initAvatarPreview(); // On lance l'écouteur pour l'avatar d'accueil
+    // On ne lance plus initAvatarPreview() pour ne pas remplacer le logo
     initLobbyActions();
     initSocket();
     setTimeout(checkUrlParams, 100);
@@ -261,6 +283,7 @@
   window.HOL.features = window.HOL.features || {};
   window.HOL.features.home = { init };
 
+  // Auto-Démarrage
   if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', init);
   } else {
