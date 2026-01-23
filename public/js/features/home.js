@@ -1,16 +1,12 @@
 // public/js/features/home.js
-// VERSION FINALE : Avatars v9 + Auto-Démarrage 🚀
+// VERSION : Join Fix + RoboHash Avatars 🤖
 
 (function () {
-  // On récupère les outils du jeu. 
-  // Si window.HOL n'existe pas encore, on attend un peu.
-  if (!window.HOL) {
-      console.warn("HOL pas encore prêt, on retentera l'init plus tard...");
-  }
-  
+  // Sécurité : on s'assure que le moteur est là
+  if (!window.HOL) console.warn("HOL chargement...");
   const { $, show, socket, state, onEnter } = window.HOL || {};
 
-  // --- 1. Gestion de l'URL et Auto-Join ---
+  // --- 1. Gestion URL ---
   function checkUrlParams() {
     const params = new URLSearchParams(window.location.search);
     const code = params.get('code');
@@ -20,7 +16,6 @@
       const inputCode = document.getElementById('join-code');
       if (inputCode) inputCode.value = code;
 
-      // On bascule sur l'onglet Rejoindre
       const btnTabJoin = document.getElementById('tab-join');
       if (btnTabJoin) btnTabJoin.click();
 
@@ -31,9 +26,9 @@
     }
   }
 
-  // --- 2. Initialisation des Actions Accueil ---
+  // --- 2. Actions Accueil ---
   function initHomeActions() {
-    // --- NAVIGATION ONGLETS ---
+    // Navigation Onglets
     const btnTabJoin = document.getElementById('tab-join');
     const btnTabCreate = document.getElementById('tab-create');
     const paneJoin = document.getElementById('pane-join');
@@ -55,31 +50,25 @@
       };
     }
 
-    // --- BOUTON CRÉER ---
+    // Bouton CRÉER
     const btnCreate = document.getElementById('btn-create');
     if (btnCreate) {
-      // On retire les anciens clics pour être sûr
       const newBtn = btnCreate.cloneNode(true);
       btnCreate.parentNode.replaceChild(newBtn, btnCreate);
       
       newBtn.onclick = () => {
         const nameInput = document.getElementById('name-create');
         const name = nameInput ? nameInput.value.trim() : '';
-        
         if (!name) return alert('Choisis un pseudo !');
         
         if (window.HOL.audio) window.HOL.audio.play('pop');
-        console.log("🚀 Création demandée pour :", name);
-        
-        // Sécurité si socket n'est pas encore là
+        // Sécurité socket
         if (window.HOL.socket) window.HOL.socket.emit('createRoom', { name });
       };
-      
-      // Touche Entrée
       if (window.HOL.onEnter) window.HOL.onEnter('name-create', () => newBtn.click());
     }
 
-    // --- BOUTON REJOINDRE ---
+    // Bouton REJOINDRE (CORRECTION ICI)
     const btnJoin = document.getElementById('btn-join');
     if (btnJoin) {
       const newBtnJoin = btnJoin.cloneNode(true);
@@ -92,7 +81,9 @@
         if (!name || !code) return alert('Pseudo et Code requis !');
         
         if (window.HOL.audio) window.HOL.audio.play('pop');
-        if (window.HOL.socket) window.HOL.socket.emit('joinRoom', { name, roomId: code });
+        
+        // FIX : On envoie bien "code" et pas "roomId" pour que le serveur comprenne !
+        if (window.HOL.socket) window.HOL.socket.emit('joinRoom', { name, code });
       };
 
       if (window.HOL.onEnter) {
@@ -102,7 +93,7 @@
     }
   }
 
-  // --- 3. Initialisation Lobby (Avatars) ---
+  // --- 3. Actions Lobby ---
   function initLobbyActions() {
     const btnReady = document.getElementById('btn-ready');
     if (btnReady) {
@@ -129,10 +120,10 @@
     const s = window.HOL.socket;
     if(!s) return;
 
-    s.off('roomJoined'); // Évite les doublons
+    s.off('roomJoined');
     s.on('roomJoined', (room) => {
       window.HOL.state.room = room;
-      window.HOL.state.roomCode = room.id;
+      window.HOL.state.roomCode = room.id; // Le serveur envoie bien { id: code } maintenant
       window.HOL.state.myId = s.id;
 
       window.HOL.show('screen-lobby');
@@ -179,19 +170,18 @@
     const hostBadge = document.getElementById('host-badge');
     if (hostBadge) hostBadge.style.display = (me && me.isHost) ? 'block' : 'none';
 
-    // Liste Joueurs + Avatars v9
+    // Liste Joueurs + ROBO HASH 🤖
     (room.players || []).forEach(p => {
       const row = document.createElement('div');
       row.className = 'player-item';
       row.style.cssText = 'display:flex;align-items:center;background:rgba(255,255,255,0.05);padding:10px;border-radius:12px;margin-bottom:8px;border:1px solid rgba(255,255,255,0.05);';
       
       const img = document.createElement('img');
-      img.src = `https://api.dicebear.com/9.x/bottts/svg?seed=${encodeURIComponent(p.name)}`;
-      img.style.cssText = 'width:38px;height:38px;border-radius:50%;margin-right:12px;background:#2a2535;';
+      // On utilise RoboHash : super fiable, pas de bug de version
+      img.src = `https://robohash.org/${encodeURIComponent(p.name)}.png?set=set1&size=64x64`;
       
-      // Fallback
-      img.onerror = function() { this.src = '/icons/icon-192.png'; this.style.borderRadius = '12px'; };
-
+      img.style.cssText = 'width:40px;height:40px;border-radius:50%;margin-right:12px;background:#1a1625;border:2px solid rgba(255,255,255,0.1);';
+      
       const txt = document.createElement('span');
       txt.textContent = p.name + (p.isHost ? ' 👑' : '') + (p.id === window.HOL.socket.id ? ' (Toi)' : '');
       txt.style.fontWeight = '600';
@@ -214,9 +204,7 @@
     if (readyPill) readyPill.textContent = `${readyCount}/${totalCount} prêts`;
   }
 
-  // --- LA FONCTION PRINCIPALE ---
   function init() {
-    console.log("✅ home.js : Initialisation...");
     initHomeActions();
     initLobbyActions();
     initSocket();
@@ -226,13 +214,10 @@
   window.HOL.features = window.HOL.features || {};
   window.HOL.features.home = { init };
 
-  // --- AUTO-DÉMARRAGE (Le fix !) ---
-  // On regarde si la page est chargée. Si oui, on lance init() tout de suite.
+  // Auto-Démarrage
   if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', init);
   } else {
-      // Petite pause pour être sûr que main.js a créé window.HOL
       setTimeout(init, 50); 
   }
-
 })();
