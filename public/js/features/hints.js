@@ -1,5 +1,5 @@
 // public/js/features/hints.js
-// Phase INDICES : affiche mot/rôle + Ambiance Visuelle (Juice) 🩸
+// Phase INDICES : affiche mot/rôle + Ambiance Visuelle + CINÉMATIQUE 🎬
 
 (function () {
   const { $, $$, toast, show, state, socket, resetPhaseProgress, onEnter } = window.HOL;
@@ -12,13 +12,12 @@
   const ui = {
     role:   () => $('my-role'),
     theme:  () => $('theme-hint-name'),
-    word:   () => $('my-word'),              // ancien bloc, on le garde mais on le cache
+    word:   () => $('my-word'),
     tip:    () => $('impostor-tip'),
     input:  () => $('hint-input'),
     send:   () => $('btn-send-hint'),
     status: () => $('hint-status'),
     instr:  () => $('hint-instruction'),
-    // NEW: chip du mot (équipiers seulement)
     wordChip:     () => $('crew-word-chip'),
     wordChipText: () => $('crew-word'),
   };
@@ -30,13 +29,10 @@
   // --- NOUVEAU : Ambiance Visuelle par Rôle ---
   function applyRoleTheme(isImpostor) {
     const body = document.body;
-    // On retire les anciens thèmes
     body.classList.remove('theme-impostor', 'theme-crew');
     
-    // On applique le nouveau
     if (isImpostor) {
       body.classList.add('theme-impostor');
-      // Petit effet de flash rouge
       body.style.animation = 'flash-red 0.5s ease-out';
       setTimeout(() => body.style.animation = '', 500);
     } else {
@@ -44,11 +40,37 @@
     }
   }
 
-  // On remet le thème normal à la fin
   function resetTheme() {
     document.body.classList.remove('theme-impostor', 'theme-crew');
   }
-  // --------------------------------------------
+
+  // --- NOUVEAU : Fonction pour jouer la cinématique ---
+  function playRoleCinematic(isImpostor, callback) {
+    const overlay = $('role-reveal-overlay');
+    const roleText = $('reveal-role-text');
+    
+    // Si l'overlay n'existe pas dans le HTML, on passe direct
+    if (!overlay || !roleText) { 
+      callback(); 
+      return; 
+    } 
+
+    // 1. Configurer le texte et la couleur
+    roleText.textContent = isImpostor ? 'IMPOSTEUR' : 'ÉQUIPIER';
+    roleText.className = isImpostor ? 'impostor' : 'crew';
+
+    // 2. Lancer l'animation
+    overlay.classList.add('playing');
+
+    // (Optionnel: Son si on l'avait) window.HOL.audio?.play('swoosh');
+
+    // 3. Attendre 3 secondes, puis tout cacher et lancer le jeu
+    setTimeout(() => {
+      overlay.classList.remove('playing');
+      callback(); // On exécute la suite
+    }, 3000); 
+  }
+  // ----------------------------------------------------
 
   function setRound(num) { $$('.round-live').forEach(el => el.textContent = String(num || 0)); }
   function setProgressHints(sub, total) {
@@ -76,11 +98,9 @@
     liveBox.id = 'crew-live-box';
     liveBox.className = 'tip';
     liveBox.style.marginTop = '8px';
-    // Style spécial pour le live
     liveBox.style.background = 'rgba(0,0,0,0.3)';
     liveBox.style.border = '1px dashed rgba(255,255,255,0.2)';
     liveBox.style.color = '#fff';
-    
     liveBox.innerHTML = `<strong>📡 Indices interceptés (live)</strong>
       <ul id="crew-live-list" style="margin:6px 0 0 18px; font-size:0.9rem; color:#ccc;"></ul>`;
     liveList = liveBox.querySelector('#crew-live-list');
@@ -91,13 +111,11 @@
     if (!liveList) return;
     const li = document.createElement('li');
     li.textContent = `${name || 'Joueur'} : "${hint || ''}"`;
-    // Petite anim d'apparition
     li.style.animation = 'fadeIn 0.5s';
     liveList.appendChild(li);
   }
   function liveSet(list) { liveClear(); (list || []).forEach(liveAdd); }
 
-  // ————— Envoi indice —————
   function sendHint() {
     if (locked || sending) return;
     const val = (ui.input()?.value || '').trim();
@@ -110,7 +128,6 @@
     socket.emit('submitHint', { hint: val });
   }
 
-  // ————— UI de base —————
   function initUI() {
     ui.send()?.addEventListener('click', sendHint);
     onEnter('hint-input', sendHint);
@@ -119,77 +136,73 @@
   // ————— Socket / cycle de vie —————
   function initSocket() {
     socket.on('roundInfo', ({ word, wordDisplay, isImpostor, domain, round }) => {
-      // Reset affichage & état
-      state.myIsImpostor = !!isImpostor;
-      sending = false; locked = false;
-
-      show('screen-hint');
-      resetPhaseProgress();
       
-      // APPLIQUER LE THÈME VISUEL (JUICE) 🩸
-      applyRoleTheme(isImpostor);
+      // === DÉBUT CINÉMATIQUE ===
+      playRoleCinematic(isImpostor, () => {
+        // CE CODE S'EXECUTE APRES L'ANIMATION
+        
+        state.myIsImpostor = !!isImpostor;
+        sending = false; locked = false;
 
-      // Thème / rôle
-      if (ui.theme()) ui.theme().textContent = domain || '—';
-      state.roundDomain = domain || '';
-      if (ui.role()) {
-        ui.role().textContent = isImpostor ? 'IMPOSTEUR' : 'ÉQUIPIER';
-        // On force le style via JS pour être sûr
-        ui.role().style.color = isImpostor ? '#ef4444' : '#a78bfa';
-        ui.role().style.fontWeight = '900';
-        ui.role().style.textTransform = 'uppercase';
-      }
+        show('screen-hint');
+        resetPhaseProgress();
+        applyRoleTheme(isImpostor); // Juice Rouge/Bleu
 
-      // Tip / Mot / Instruction / Chip selon le rôle
-      const tipEl  = ui.tip();
-      const wordEl = ui.word();          // ancien grand bloc
-      const instr  = ui.instr();
-      const chip   = ui.wordChip();
-      const chipTxt= ui.wordChipText();
-
-      if (isImpostor) {
-        if (tipEl)  { 
-          tipEl.style.display = 'block';
-          // Message plus punchy
-          tipEl.innerHTML = "🤫 <strong>CHUT !</strong> Tu n’as pas de mot.<br>Espionne les autres et bluffe !"; 
-          tipEl.style.background = 'rgba(239, 68, 68, 0.2)'; // Fond rouge
-          tipEl.style.borderColor = '#ef4444';
-          tipEl.style.color = '#fca5a5';
+        // Mise à jour textes
+        if (ui.theme()) ui.theme().textContent = domain || '—';
+        state.roundDomain = domain || '';
+        if (ui.role()) {
+          ui.role().textContent = isImpostor ? 'IMPOSTEUR' : 'ÉQUIPIER';
+          ui.role().style.color = isImpostor ? '#ef4444' : '#a78bfa';
+          ui.role().style.fontWeight = '900';
+          ui.role().style.textTransform = 'uppercase';
         }
-        if (wordEl) { wordEl.style.display = 'none'; wordEl.textContent = ''; }
-        if (instr)  { instr.style.display = 'none'; }
-        if (chip)   { chip.style.display = 'none'; if (chipTxt) chipTxt.textContent = ''; }
-      } else {
-        if (tipEl)  tipEl.style.display = 'none';
-        // on masque l’ancien gros bloc et on utilise la chip à la place
-        if (wordEl) { wordEl.style.display = 'none'; }
-        if (instr)  { instr.style.display = '';
-                      instr.textContent = "Trouve un indice malin, sans trahir ton mot !"; }
-        if (chip)   { chip.style.display = ''; if (chipTxt) chipTxt.textContent = wordDisplay || word || '—'; }
-      }
 
-      // Champ & boutons
-      clearStatus();
-      if (ui.input()) { ui.input().value = ''; ui.input().disabled = false; ui.input().focus(); }
-      if (ui.send())  ui.send().disabled = false;
+        const tipEl  = ui.tip();
+        const wordEl = ui.word();          
+        const instr  = ui.instr();
+        const chip   = ui.wordChip();
+        const chipTxt= ui.wordChipText();
 
-      // UI annexes
-      setRound(round);
-      $('progress-hints') && ( $('progress-hints').textContent = '0/0' );
-      $('progress-vote')  && ( $('progress-vote').textContent  = '0/0' );
-      $('timer-vote')     && ( $('timer-vote').textContent     = '00:40' );
-      $('timer-reveal')   && ( $('timer-reveal').textContent   = '--:--' );
+        if (isImpostor) {
+          if (tipEl) { 
+            tipEl.style.display = 'block';
+            tipEl.innerHTML = "🤫 <strong>CHUT !</strong> Tu n’as pas de mot.<br>Espionne les autres et bluffe !"; 
+            tipEl.style.background = 'rgba(239, 68, 68, 0.2)';
+            tipEl.style.borderColor = '#ef4444';
+            tipEl.style.color = '#fca5a5';
+          }
+          if (wordEl) { wordEl.style.display = 'none'; wordEl.textContent = ''; }
+          if (instr)  { instr.style.display = 'none'; }
+          if (chip)   { chip.style.display = 'none'; if (chipTxt) chipTxt.textContent = ''; }
+        } else {
+          if (tipEl)  tipEl.style.display = 'none';
+          if (wordEl) { wordEl.style.display = 'none'; }
+          if (instr)  { instr.style.display = ''; instr.textContent = "Trouve un indice malin, sans trahir ton mot !"; }
+          if (chip)   { chip.style.display = ''; if (chipTxt) chipTxt.textContent = wordDisplay || word || '—'; }
+        }
 
-      // Live imposteur : insérer juste au-dessus du champ "Ton indice"
-      if (isImpostor) {
-        ensureLiveUI();
-        liveBox.style.display = 'block';
-        liveClear();
-        ui.input()?.insertAdjacentElement('beforebegin', liveBox);
-      } else {
-        if (liveBox) { liveBox.style.display = 'none'; liveClear(); }
-      }
-    });
+        clearStatus();
+        if (ui.input()) { ui.input().value = ''; ui.input().disabled = false; ui.input().focus(); }
+        if (ui.send())  ui.send().disabled = false;
+
+        setRound(round);
+        $('progress-hints') && ( $('progress-hints').textContent = '0/0' );
+        $('progress-vote')  && ( $('progress-vote').textContent  = '0/0' );
+        $('timer-vote')     && ( $('timer-vote').textContent     = '00:40' );
+        $('timer-reveal')   && ( $('timer-reveal').textContent   = '--:--' );
+
+        if (isImpostor) {
+          ensureLiveUI();
+          liveBox.style.display = 'block';
+          liveClear();
+          ui.input()?.insertAdjacentElement('beforebegin', liveBox);
+        } else {
+          if (liveBox) { liveBox.style.display = 'none'; liveClear(); }
+        }
+      }); 
+      // === FIN DU CALLBACK CINÉMATIQUE ===
+    }); // <--- C'EST ICI QU'IL MANQUAIT LA FERMETURE DANS TON TEXTE !
 
     socket.on('phaseProgress', ({ phase, submitted, total, round }) => {
       if (phase === 'hints') {
@@ -210,7 +223,6 @@
       showError(reason);
     });
 
-    // Live pour l’imposteur (réception & ajout)
     socket.on('crewHintsLive', ({ hints }) => {
       if (!state.myIsImpostor) return;
       ensureLiveUI();
@@ -218,6 +230,7 @@
       liveSet(hints || []);
       ui.input()?.insertAdjacentElement('beforebegin', liveBox);
     });
+    
     socket.on('crewHintAdded', (item) => {
       if (!state.myIsImpostor) return;
       ensureLiveUI();
@@ -226,7 +239,6 @@
       ui.input()?.insertAdjacentElement('beforebegin', liveBox);
     });
 
-    // Filets de sécurité
     socket.on('timer', ({ phase, leftMs }) => {
       if (phase === 'hints' && leftMs <= 0) {
         locked = true; sending = false;
@@ -234,7 +246,6 @@
       }
       if (phase === 'voting' && liveBox) liveBox.style.display = 'none';
       
-      // Si on change de phase (ex: vote ou résultat), on enlève le thème rouge/bleu
       if (phase !== 'hints' && phase !== 'prestart') {
          resetTheme();
       }
