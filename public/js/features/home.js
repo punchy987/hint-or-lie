@@ -230,8 +230,10 @@
           list.appendChild(card);
         });
       }
-      updateScoreboard(snap.players);
-    });
+// On force l'appel à la version globale
+if (window.HOL.updateScoreboard) {
+   window.HOL.updateScoreboard(snap.players);
+}    });
     // --- FIN MODIF ---
 
     s.on('lobbyReadyProgress', ({ ready, total }) => {
