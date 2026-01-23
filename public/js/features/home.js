@@ -1,5 +1,6 @@
 // public/js/features/home.js
 // Gère l'accueil (Login), le Lobby, et le lien d'invitation propre 🧹
+// VERSION CORRIGÉE (IDs Onglets)
 
 (function () {
   const { $, show, socket, state, onEnter } = window.HOL;
@@ -12,45 +13,32 @@
 
     // Cas 1 : Lien d'invitation (Code seulement)
     if (code && !name) {
-      // On pré-remplit le code
-      const inputCode = $('input-room-code');
+      const inputCode = $('join-code'); // ID corrigé pour matcher ton HTML (c'était input-room-code)
       if (inputCode) inputCode.value = code;
       
-      // On bascule sur l'onglet "Rejoindre"
-      show('tab-join'); // Assure-toi que ton CSS gère l'affichage des onglets
+      show('tab-join'); // On bascule sur l'onglet
+      // On met le focus sur le pseudo
+      $('name-join')?.focus();
       
-      // On met le curseur sur le Pseudo pour qu'il tape direct
-      $('input-pseudo-join')?.focus();
-      
-      // On nettoie l'URL pour faire propre
+      // On nettoie l'URL
       window.history.replaceState({}, document.title, "/");
-    }
-    
-    // Cas 2 : Rechargement de page en pleine partie (Code + Nom)
-    // (Optionnel : tu peux le garder si tu veux que F5 reconnecte le joueur)
-    else if (code && name) {
-      // Là on peut tenter une reconnexion auto si tu le souhaites
-      // Mais pour la sécurité, mieux vaut laisser l'utilisateur revalider
-      $('input-room-code').value = code;
-      $('input-pseudo-join').value = name;
-      show('tab-join');
     }
   }
 
   function initHomeActions() {
     // Bouton CRÉER
     $('btn-create').onclick = () => {
-      const name = $('input-pseudo-create').value.trim();
+      const name = $('name-create').value.trim(); // ID HTML = name-create
       if (!name) return alert('Choisis un pseudo !');
-      window.HOL.audio?.play('bgm'); // Musique (si activée)
+      window.HOL.audio?.play('bgm');
       window.HOL.audio?.play('pop');
       socket.emit('createRoom', { name });
     };
 
     // Bouton REJOINDRE
     $('btn-join').onclick = () => {
-      const name = $('input-pseudo-join').value.trim();
-      const code = $('input-room-code').value.trim().toUpperCase();
+      const name = $('name-join').value.trim(); // ID HTML = name-join
+      const code = $('join-code').value.trim().toUpperCase(); // ID HTML = join-code
       if (!name || !code) return alert('Remplis tout !');
       window.HOL.audio?.play('bgm');
       window.HOL.audio?.play('pop');
@@ -58,23 +46,28 @@
     };
 
     // Support de la touche Entrée
-    onEnter('input-pseudo-create', () => $('btn-create').click());
-    onEnter('input-room-code', () => $('btn-join').click());
-    onEnter('input-pseudo-join', () => $('btn-join').click());
+    onEnter('name-create', () => $('btn-create').click());
+    onEnter('join-code', () => $('btn-join').click());
+    onEnter('name-join', () => $('btn-join').click());
 
     // --- NAVIGATION ONGLETS (Rejoindre / Créer) ---
-    // Simple logique pour basculer les formulaires
-    const btnTabJoin = document.getElementById('tab-btn-join');
-    const btnTabCreate = document.getElementById('tab-btn-create');
+    // C'EST ICI QUE C'ETAIT CASSÉ
+    const btnTabJoin = document.getElementById('tab-join');     // ID HTML exact
+    const btnTabCreate = document.getElementById('tab-create'); // ID HTML exact
+    const paneJoin = document.getElementById('pane-join');
+    const paneCreate = document.getElementById('pane-create');
     
     if (btnTabJoin && btnTabCreate) {
       btnTabJoin.onclick = () => {
-        show('tab-join');
+        // Gestion des classes active/inactive
+        paneJoin.classList.add('active');
+        paneCreate.classList.remove('active');
         btnTabJoin.setAttribute('aria-selected', 'true');
         btnTabCreate.setAttribute('aria-selected', 'false');
       };
       btnTabCreate.onclick = () => {
-        show('tab-create');
+        paneJoin.classList.remove('active');
+        paneCreate.classList.add('active');
         btnTabJoin.setAttribute('aria-selected', 'false');
         btnTabCreate.setAttribute('aria-selected', 'true');
       };
@@ -88,12 +81,9 @@
       socket.emit('toggleReady');
     };
 
-    // Bouton INVITER (CORRIGÉ 🔗)
+    // Bouton INVITER
     $('btn-invite').onclick = () => {
       if (!state.roomCode) return;
-      
-      // On construit un lien PROPRE : juste l'origine + le code
-      // Exemple : https://mon-jeu.com/?code=ABCD
       const inviteUrl = `${window.location.origin}/?code=${state.roomCode}`;
       
       navigator.clipboard.writeText(inviteUrl).then(() => {
@@ -105,10 +95,12 @@
     };
 
     // Bouton DÉMARRER (Host seulement)
-    $('btn-start').onclick = () => {
-      window.HOL.audio?.play('pop');
-      socket.emit('startGame');
-    };
+    if ($('btn-start')) { // Sécurité si le bouton n'existe pas encore
+        $('btn-start').onclick = () => {
+            window.HOL.audio?.play('pop');
+            socket.emit('startGame');
+        };
+    }
   }
 
   function initSocket() {
@@ -120,11 +112,7 @@
 
       // Mise à jour UI
       show('screen-lobby');
-      $('lobby-room-code').textContent = room.id;
-      
-      // Si on veut mettre le code dans l'URL pour le rechargement (F5), on peut :
-      // const myName = room.players.find(p => p.id === socket.id)?.name;
-      // window.history.replaceState({}, '', `/?code=${room.id}&name=${myName}`);
+      $('lobby-code').textContent = room.id;
       
       updateLobbyUI(room);
     });
@@ -137,29 +125,53 @@
 
     // Erreurs
     socket.on('errorMsg', (msg) => {
-      alert(msg); // Ou un toast plus joli
+      alert(msg);
     });
   }
 
   // Fonction d'affichage du Lobby
   function updateLobbyUI(room) {
-    const list = $('players-list');
+    const list = $('players'); // ID HTML = players (pas players-list)
     if (!list) return;
     list.innerHTML = '';
 
+    // Gestion du bouton START (Host)
+    // On doit peut-être l'ajouter dynamiquement s'il n'est pas dans le HTML de base
+    const actionsRow = $('lobby-actions');
+    let startBtn = document.getElementById('btn-start');
+    
     const me = (room.players || []).find(p => p.id === socket.id);
-    // Gestion bouton Start
-    if (me && me.isHost) $('admin-controls').style.display = 'block';
-    else $('admin-controls').style.display = 'none';
+    
+    if (me && me.isHost) {
+        if (!startBtn && actionsRow) {
+            startBtn = document.createElement('button');
+            startBtn.id = 'btn-start';
+            startBtn.textContent = 'Démarrer la partie';
+            startBtn.onclick = () => socket.emit('startGame');
+            // Insérer au début des actions
+            actionsRow.insertBefore(startBtn, actionsRow.firstChild);
+        }
+    } else {
+        if (startBtn) startBtn.remove();
+    }
+    
+    // Titre "Tu es l'hôte"
+    if ($('host-badge')) $('host-badge').style.display = (me && me.isHost) ? 'block' : 'none';
+
 
     // Remplissage liste
     (room.players || []).forEach(p => {
-      const li = document.createElement('li');
+      const li = document.createElement('div'); // Div car c'est une liste style grid/flex
       li.className = 'player-item';
+      li.style.display = 'flex';
+      li.style.alignItems = 'center';
+      li.style.background = 'rgba(255,255,255,0.05)';
+      li.style.padding = '8px';
+      li.style.borderRadius = '8px';
       
       // Avatar
       const img = document.createElement('img');
-      img.src = `https://api.dicebear.com/7.x/bottts/svg?seed=${p.name}`;
+      img.src = `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(p.name)}&backgroundColor=b6e3f4,c0aede,d1d4f9`;
       img.style.width = '30px'; img.style.height = '30px'; 
       img.style.borderRadius = '50%'; img.style.marginRight = '10px';
       
@@ -176,7 +188,12 @@
       list.appendChild(li);
     });
 
-    // Mise à jour du Scoreboard GLOBAL (pour qu'il s'affiche partout)
+    // Mise à jour du compteur de prêts
+    const readyCount = (room.players || []).filter(p => p.isReady).length;
+    const totalCount = (room.players || []).length;
+    if ($('lobby-ready-pill')) $('lobby-ready-pill').textContent = `${readyCount}/${totalCount} prêts`;
+
+    // Mise à jour du Scoreboard GLOBAL
     if (window.HOL.updateScoreboard) {
       window.HOL.updateScoreboard(room.players);
     }
@@ -186,7 +203,7 @@
     initHomeActions();
     initLobbyActions();
     initSocket();
-    checkUrlParams(); // On vérifie l'URL au chargement
+    checkUrlParams(); 
   }
 
   window.HOL.features = window.HOL.features || {};
