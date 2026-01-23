@@ -1,44 +1,20 @@
 // public/js/features/home.js
-// VERSION : Logo HL Fixe + Vrais Robots + Bouton Retour OK ✅
 
 (function () {
-  // Sécurité chargement
-  if (!window.HOL) console.warn("HOL chargement...");
-  const { $, show, socket, state, onEnter } = window.HOL || {};
+  if (!window.HOL) return;
+  const { $, show, socket, state, onEnter } = window.HOL;
 
   // --- FONCTION AVATAR (DiceBear Bottts v9) ---
   function getAvatar(seed) {
-    // On utilise DiceBear v9 pour retrouver tes robots préférés
     return `https://api.dicebear.com/9.x/bottts/svg?seed=${encodeURIComponent(seed || 'anonyme')}`;
   }
 
-  // --- 1. Gestion URL ---
-  function checkUrlParams() {
-    const params = new URLSearchParams(window.location.search);
-    const code = params.get('code');
-    const name = params.get('name');
-
-    if (code && !name) {
-      const inputCode = document.getElementById('join-code');
-      if (inputCode) inputCode.value = code;
-
-      const btnTabJoin = document.getElementById('tab-join');
-      if (btnTabJoin) btnTabJoin.click();
-
-      const inputName = document.getElementById('name-join');
-      if (inputName) inputName.focus();
-
-      window.history.replaceState({}, document.title, "/");
-    }
-  }
-
-  // --- 2. Actions Accueil ---
   function initHomeActions() {
-    // Navigation Onglets
-    const btnTabJoin = document.getElementById('tab-join');
-    const btnTabCreate = document.getElementById('tab-create');
-    const paneJoin = document.getElementById('pane-join');
-    const paneCreate = document.getElementById('pane-create');
+    // Onglets
+    const btnTabJoin = $('tab-join');
+    const btnTabCreate = $('tab-create');
+    const paneJoin = $('pane-join');
+    const paneCreate = $('pane-create');
 
     if (btnTabJoin && btnTabCreate) {
       btnTabJoin.onclick = () => {
@@ -47,7 +23,6 @@
         btnTabJoin.setAttribute('aria-selected', 'true');
         btnTabCreate.setAttribute('aria-selected', 'false');
       };
-
       btnTabCreate.onclick = () => {
         paneJoin.classList.remove('active');
         paneCreate.classList.add('active');
@@ -57,171 +32,97 @@
     }
 
     // Bouton CRÉER
-    const btnCreate = document.getElementById('btn-create');
+    const btnCreate = $('btn-create');
     if (btnCreate) {
-      const newBtn = btnCreate.cloneNode(true);
-      btnCreate.parentNode.replaceChild(newBtn, btnCreate);
-      
-      newBtn.onclick = () => {
-        const nameInput = document.getElementById('name-create');
-        const name = nameInput ? nameInput.value.trim() : '';
+      btnCreate.onclick = () => {
+        const name = $('name-create').value.trim();
         if (!name) return alert('Choisis un pseudo !');
-        
-        if (window.HOL.audio) window.HOL.audio.play('pop');
-        if (window.HOL.socket) window.HOL.socket.emit('createRoom', { name });
+        window.HOL.audio?.play('pop');
+        socket.emit('createRoom', { name });
       };
-      if (window.HOL.onEnter) window.HOL.onEnter('name-create', () => newBtn.click());
+      onEnter('name-create', () => btnCreate.click());
     }
 
     // Bouton REJOINDRE
-    const btnJoin = document.getElementById('btn-join');
+    const btnJoin = $('btn-join');
     if (btnJoin) {
-      const newBtnJoin = btnJoin.cloneNode(true);
-      btnJoin.parentNode.replaceChild(newBtnJoin, btnJoin);
-
-      newBtnJoin.onclick = () => {
-        const name = document.getElementById('name-join').value.trim();
-        const code = document.getElementById('join-code').value.trim().toUpperCase();
-        
+      btnJoin.onclick = () => {
+        const name = $('name-join').value.trim();
+        const code = $('join-code').value.trim().toUpperCase();
         if (!name || !code) return alert('Pseudo et Code requis !');
-        if (window.HOL.audio) window.HOL.audio.play('pop');
-        
-        if (window.HOL.socket) {
-            // "Ceinture et bretelles" : on envoie le code sous toutes les formes possibles
-            window.HOL.socket.emit('joinRoom', { name, code, roomId: code });
-        }
+        window.HOL.audio?.play('pop');
+        socket.emit('joinRoom', { name, code, roomId: code });
       };
-
-      if (window.HOL.onEnter) {
-          window.HOL.onEnter('join-code', () => newBtnJoin.click());
-          window.HOL.onEnter('name-join', () => newBtnJoin.click());
-      }
+      onEnter('join-code', () => btnJoin.click());
+      onEnter('name-join', () => btnJoin.click());
     }
   }
 
-  // --- 3. Actions Lobby ---
   function initLobbyActions() {
-    // Bouton Je suis prêt
-    const btnReady = document.getElementById('btn-ready');
-    if (btnReady) {
-      btnReady.onclick = () => {
-        if (window.HOL.audio) window.HOL.audio.play('pop');
-        window.HOL.socket.emit('toggleReady');
-      };
-    }
+    // Bouton PRÊT
+    $('btn-ready').onclick = () => {
+      window.HOL.audio?.play('pop');
+      socket.emit('toggleReady');
+    };
 
-    // Bouton Inviter
-    const btnInvite = document.getElementById('btn-invite');
-    if (btnInvite) {
-      btnInvite.onclick = () => {
-        const state = window.HOL.state;
-        if (!state.roomCode) return;
-        const inviteUrl = `${window.location.origin}/?code=${state.roomCode}`;
-        navigator.clipboard.writeText(inviteUrl)
-          .then(() => alert("Lien d'invitation copié ! 🔗"))
-          .catch(e => console.error(e));
-      };
-    }
+    // Bouton INVITER
+    $('btn-invite').onclick = () => {
+      if (!state.roomCode) return;
+      const inviteUrl = `${window.location.origin}/?code=${state.roomCode}`;
+      navigator.clipboard.writeText(inviteUrl).then(() => alert("Lien copié ! 🔗"));
+    };
 
-    // Clic sur le Code pour copier
-    const codeDisplay = document.getElementById('lobby-code');
+    // CLIC SUR LE CODE POUR COPIER
+    const codeDisplay = $('lobby-code');
     if (codeDisplay) {
         codeDisplay.style.cursor = 'pointer';
-        codeDisplay.title = "Cliquer pour copier le code";
         codeDisplay.onclick = () => {
-            const code = codeDisplay.textContent;
-            if(code) navigator.clipboard.writeText(code).then(() => alert(`Code ${code} copié !`));
+            navigator.clipboard.writeText(codeDisplay.textContent).then(() => alert("Code copié !"));
         };
     }
 
-    // Bouton RETOUR À L'ACCUEIL (C'est lui qui était cassé !)
-    const btnBack = document.getElementById('btn-back-home');
+    // --- FIX BOUTON RETOUR À L'ACCUEIL ---
+    // Utilise l'ID exact de ton HTML : btn-back-home
+    const btnBack = $('btn-back-home');
     if (btnBack) {
         btnBack.onclick = () => {
-            if (window.HOL.audio) window.HOL.audio.play('pop');
-            
-            // 1. On prévient le serveur qu'on part
-            if (window.HOL.socket) window.HOL.socket.emit('leaveRoom');
-            
-            // 2. On change l'écran tout de suite
-            document.getElementById('screen-lobby').style.display = 'none';
-            document.getElementById('screen-home').style.display = 'flex'; // ou block selon ton CSS, flex est souvent mieux pour centrer
-            
-            // 3. On nettoie l'état local
-            window.HOL.state.room = null;
-            window.HOL.state.roomCode = null;
+            window.HOL.audio?.play('pop');
+            socket.emit('leaveRoom');
+            // Gestion manuelle de l'affichage
+            $('screen-lobby').style.display = 'none';
+            $('screen-home').style.display = 'block';
+            state.room = null;
+            state.roomCode = null;
         };
     }
-  }
-
-  // --- Logique d'Entrée (Factorisée) ---
-  function enterLobby(roomData) {
-      const realId = roomData.id || roomData.code;
-      
-      window.HOL.state.room = roomData;
-      window.HOL.state.roomCode = realId;
-      window.HOL.state.myId = window.HOL.socket.id;
-
-      window.HOL.show('screen-lobby');
-      const home = document.getElementById('screen-home');
-      if(home) home.style.display = 'none';
-
-      const codeDisplay = document.getElementById('lobby-code');
-      if(codeDisplay) codeDisplay.textContent = realId;
-
-      if (roomData.players) {
-        updateLobbyUI(roomData);
-      } else {
-        const myName = document.getElementById('name-create')?.value || 'Moi';
-        updateLobbyUI({ players: [{ id: window.HOL.socket.id, name: myName, isHost: true }] });
-      }
-  }
-
-  function initSocket() {
-    const s = window.HOL.socket;
-    if(!s) return;
-
-    s.off('roomJoined');
-    s.off('roomCreated');
-
-    s.on('roomJoined', (room) => { console.log("✅ Room Joined"); enterLobby(room); });
-    s.on('roomCreated', (data) => { console.log("✅ Room Created (Fix Host)"); enterLobby(data); });
-
-    s.on('updatePlayerList', (players) => {
-      if (window.HOL.state.room) window.HOL.state.room.players = players;
-      updateLobbyUI({ players });
-    });
-    
-    s.on('errorMsg', (msg) => alert(msg));
   }
 
   function updateLobbyUI(room) {
-    const list = document.getElementById('players');
+    const list = $('players');
     if (!list) return;
     list.innerHTML = '';
 
-    const actionsRow = document.getElementById('lobby-actions');
-    let startBtn = document.getElementById('btn-start');
-    const me = (room.players || []).find(p => p.id === window.HOL.socket.id);
+    const actionsRow = $('lobby-actions');
+    let startBtn = $('btn-start');
+    const me = (room.players || []).find(p => p.id === socket.id);
     
-    // Bouton Démarrer (Host)
+    // Bouton Start (Host)
     if (me && me.isHost) {
         if (!startBtn && actionsRow) {
             startBtn = document.createElement('button');
             startBtn.id = 'btn-start';
             startBtn.textContent = 'Démarrer la partie';
             startBtn.style.background = 'linear-gradient(45deg, #8b5cf6, #d946ef)';
-            startBtn.onclick = () => window.HOL.socket.emit('startGame');
+            startBtn.onclick = () => socket.emit('startGame');
             actionsRow.insertBefore(startBtn, actionsRow.firstChild);
         }
-    } else {
-        if (startBtn) startBtn.remove();
+    } else if (startBtn) {
+        startBtn.remove();
     }
     
-    const hostBadge = document.getElementById('host-badge');
-    if (hostBadge) hostBadge.style.display = (me && me.isHost) ? 'block' : 'none';
+    if ($('host-badge')) $('host-badge').style.display = (me && me.isHost) ? 'block' : 'none';
 
-    // Liste Joueurs + Robots Bottts
+    // Liste des joueurs avec Avatars corrigés
     (room.players || []).forEach(p => {
       const row = document.createElement('div');
       row.className = 'player-item';
@@ -229,11 +130,10 @@
       
       const img = document.createElement('img');
       img.src = getAvatar(p.name);
-      // Fond bleu pastel comme tu aimes
-      img.style.cssText = 'width:40px;height:40px;border-radius:50%;margin-right:12px;background:#b6e3f4;border:2px solid rgba(255,255,255,0.1);';
+      img.style.cssText = 'width:40px;height:40px;border-radius:50%;margin-right:12px;background:#b6e3f4;';
       
       const txt = document.createElement('span');
-      txt.textContent = p.name + (p.isHost ? ' 👑' : '') + (p.id === window.HOL.socket.id ? ' (Toi)' : '');
+      txt.textContent = p.name + (p.isHost ? ' 👑' : '') + (p.id === socket.id ? ' (Toi)' : '');
       txt.style.fontWeight = '600';
 
       if (p.isReady) {
@@ -246,27 +146,48 @@
       row.appendChild(txt);
       list.appendChild(row);
     });
-    
+
     const readyCount = (room.players || []).filter(p => p.isReady).length;
     const totalCount = (room.players || []).length;
-    const readyPill = document.getElementById('lobby-ready-pill');
-    if (readyPill) readyPill.textContent = `${readyCount}/${totalCount} prêts`;
+    if ($('lobby-ready-pill')) $('lobby-ready-pill').textContent = `${readyCount}/${totalCount} prêts`;
+  }
+
+  function initSocket() {
+    socket.off('roomJoined');
+    socket.off('roomCreated');
+
+    const enter = (data) => {
+        const id = data.id || data.code;
+        state.room = data;
+        state.roomCode = id;
+        show('screen-lobby');
+        $('screen-home').style.display = 'none';
+        $('lobby-code').textContent = id;
+        updateLobbyUI(data);
+    };
+
+    socket.on('roomJoined', enter);
+    socket.on('roomCreated', enter);
+    socket.on('updatePlayerList', (players) => {
+      if (state.room) state.room.players = players;
+      updateLobbyUI({ players });
+    });
+    socket.on('errorMsg', (msg) => alert(msg));
   }
 
   function init() {
     initHomeActions();
     initLobbyActions();
     initSocket();
-    setTimeout(checkUrlParams, 100);
+    // Check URL params pour auto-join
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('code')) {
+        $('join-code').value = params.get('code');
+        $('tab-join').click();
+    }
   }
 
-  window.HOL.features = window.HOL.features || {};
   window.HOL.features.home = { init };
-
-  // Auto-Démarrage
-  if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', init);
-  } else {
-      setTimeout(init, 50); 
-  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else setTimeout(init, 50);
 })();
