@@ -4,13 +4,12 @@
   if (!window.HOL) return;
   const { $, show, socket, state, onEnter } = window.HOL;
 
-  // --- FONCTION AVATAR (DiceBear Bottts v9) ---
+  // --- FONCTION AVATAR ---
   function getAvatar(seed) {
     return `https://api.dicebear.com/9.x/bottts/svg?seed=${encodeURIComponent(seed || 'anonyme')}`;
   }
 
   function initHomeActions() {
-    // Onglets
     const btnTabJoin = $('tab-join');
     const btnTabCreate = $('tab-create');
     const paneJoin = $('pane-join');
@@ -51,7 +50,7 @@
         const code = $('join-code').value.trim().toUpperCase();
         if (!name || !code) return alert('Pseudo et Code requis !');
         window.HOL.audio?.play('pop');
-        socket.emit('joinRoom', { name, code, roomId: code });
+        socket.emit('joinRoom', { name, code });
       };
       onEnter('join-code', () => btnJoin.click());
       onEnter('name-join', () => btnJoin.click());
@@ -59,11 +58,18 @@
   }
 
   function initLobbyActions() {
-    // Bouton PRÊT
-    $('btn-ready').onclick = () => {
-      window.HOL.audio?.play('pop');
-      socket.emit('toggleReady');
-    };
+    // Bouton PRÊT (Corrigé pour matcher le serveur)
+    const btnReady = $('btn-ready');
+    if (btnReady) {
+      btnReady.onclick = () => {
+        window.HOL.audio?.play('pop');
+        // On vérifie si on est déjà prêt via une classe ou le texte
+        const isCurrentlyReady = btnReady.getAttribute('data-ready') === 'true';
+        socket.emit('playerReadyLobby', { ready: !isCurrentlyReady });
+        btnReady.setAttribute('data-ready', !isCurrentlyReady);
+        btnReady.textContent = isCurrentlyReady ? "Je suis prêt" : "Prêt ! (Annuler)";
+      };
+    }
 
     // Bouton INVITER
     $('btn-invite').onclick = () => {
@@ -81,18 +87,13 @@
         };
     }
 
-    // --- FIX BOUTON RETOUR À L'ACCUEIL ---
-    // Utilise l'ID exact de ton HTML : btn-back-home
+    // BOUTON RETOUR (Action leaveRoom + Reload pour purger le cache)
     const btnBack = $('btn-back-home');
     if (btnBack) {
         btnBack.onclick = () => {
             window.HOL.audio?.play('pop');
             socket.emit('leaveRoom');
-            // Gestion manuelle de l'affichage
-            $('screen-lobby').style.display = 'none';
-            $('screen-home').style.display = 'block';
-            state.room = null;
-            state.roomCode = null;
+            window.location.reload(); 
         };
     }
   }
@@ -102,28 +103,35 @@
     if (!list) return;
     list.innerHTML = '';
 
+    // Sécurité : transformer l'objet players en tableau si nécessaire
+    const playersArray = Array.isArray(room.players) ? room.players : Object.values(room.players || {});
+    
     const actionsRow = $('lobby-actions');
     let startBtn = $('btn-start');
-    const me = (room.players || []).find(p => p.id === socket.id);
     
-    // Bouton Start (Host)
-    if (me && me.isHost) {
+    // On trouve l'hôte et l'utilisateur actuel
+    const me = playersArray.find(p => p.id === socket.id) || room.players[socket.id];
+    const isHost = me?.isHost || (room.hostId === socket.id);
+
+    // Bouton Start (Seulement pour l'Host)
+    if (isHost) {
         if (!startBtn && actionsRow) {
             startBtn = document.createElement('button');
             startBtn.id = 'btn-start';
             startBtn.textContent = 'Démarrer la partie';
             startBtn.style.background = 'linear-gradient(45deg, #8b5cf6, #d946ef)';
-            startBtn.onclick = () => socket.emit('startGame');
+            // CORRECTION : startRound au lieu de startGame
+            startBtn.onclick = () => socket.emit('startRound');
             actionsRow.insertBefore(startBtn, actionsRow.firstChild);
         }
     } else if (startBtn) {
         startBtn.remove();
     }
     
-    if ($('host-badge')) $('host-badge').style.display = (me && me.isHost) ? 'block' : 'none';
+    if ($('host-badge')) $('host-badge').style.display = isHost ? 'block' : 'none';
 
-    // Liste des joueurs avec Avatars corrigés
-    (room.players || []).forEach(p => {
+    // Affichage des joueurs
+    playersArray.forEach(p => {
       const row = document.createElement('div');
       row.className = 'player-item';
       row.style.cssText = 'display:flex;align-items:center;background:rgba(255,255,255,0.05);padding:10px;border-radius:12px;margin-bottom:8px;border:1px solid rgba(255,255,255,0.05);';
@@ -133,7 +141,9 @@
       img.style.cssText = 'width:40px;height:40px;border-radius:50%;margin-right:12px;background:#b6e3f4;';
       
       const txt = document.createElement('span');
-      txt.textContent = p.name + (p.isHost ? ' 👑' : '') + (p.id === socket.id ? ' (Toi)' : '');
+      // Le serveur utilise isHost et isReady
+      const isMe = (p.id === socket.id || p.name === me?.name);
+      txt.textContent = p.name + (p.isHost || p.id === room.hostId ? ' 👑' : '') + (isMe ? ' (Toi)' : '');
       txt.style.fontWeight = '600';
 
       if (p.isReady) {
@@ -147,15 +157,13 @@
       list.appendChild(row);
     });
 
-    const readyCount = (room.players || []).filter(p => p.isReady).length;
-    const totalCount = (room.players || []).length;
+    const readyCount = playersArray.filter(p => p.isReady).length;
+    const totalCount = playersArray.length;
     if ($('lobby-ready-pill')) $('lobby-ready-pill').textContent = `${readyCount}/${totalCount} prêts`;
   }
 
   function initSocket() {
-    socket.off('roomJoined');
-    socket.off('roomCreated');
-
+    // On ne fait plus de .off() pour ne pas casser les autres fichiers
     const enter = (data) => {
         const id = data.id || data.code;
         state.room = data;
@@ -172,6 +180,12 @@
       if (state.room) state.room.players = players;
       updateLobbyUI({ players });
     });
+    
+    // Ecouter la progression des prêts envoyée par le serveur
+    socket.on('lobbyReadyProgress', ({ ready, total }) => {
+        if ($('lobby-ready-pill')) $('lobby-ready-pill').textContent = `${ready}/${total} prêts`;
+    });
+
     socket.on('errorMsg', (msg) => alert(msg));
   }
 
@@ -179,7 +193,7 @@
     initHomeActions();
     initLobbyActions();
     initSocket();
-    // Check URL params pour auto-join
+    
     const params = new URLSearchParams(window.location.search);
     if (params.get('code')) {
         $('join-code').value = params.get('code');
@@ -187,7 +201,6 @@
     }
   }
 
-  window.HOL.features.home = { init };
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
-  else setTimeout(init, 50);
+  // Export pour main.js
+  window.HOL.features.home = { init, updateLobbyUI };
 })();
