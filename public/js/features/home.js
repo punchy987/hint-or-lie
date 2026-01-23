@@ -1,8 +1,8 @@
 // public/js/features/home.js
-// VERSION : Join Fix + RoboHash Avatars 🤖
+// VERSION : Client "Polyglotte" (Compatible Serveur Non-Modifié) 🌍
 
 (function () {
-  // Sécurité : on s'assure que le moteur est là
+  // Sécurité chargement
   if (!window.HOL) console.warn("HOL chargement...");
   const { $, show, socket, state, onEnter } = window.HOL || {};
 
@@ -62,13 +62,12 @@
         if (!name) return alert('Choisis un pseudo !');
         
         if (window.HOL.audio) window.HOL.audio.play('pop');
-        // Sécurité socket
         if (window.HOL.socket) window.HOL.socket.emit('createRoom', { name });
       };
       if (window.HOL.onEnter) window.HOL.onEnter('name-create', () => newBtn.click());
     }
 
-    // Bouton REJOINDRE (CORRECTION ICI)
+    // Bouton REJOINDRE
     const btnJoin = document.getElementById('btn-join');
     if (btnJoin) {
       const newBtnJoin = btnJoin.cloneNode(true);
@@ -82,8 +81,14 @@
         
         if (window.HOL.audio) window.HOL.audio.play('pop');
         
-        // FIX : On envoie bien "code" et pas "roomId" pour que le serveur comprenne !
-        if (window.HOL.socket) window.HOL.socket.emit('joinRoom', { name, code });
+        // ASTUCE : On envoie le code sous les deux noms pour être sûr que le serveur le trouve !
+        if (window.HOL.socket) {
+            window.HOL.socket.emit('joinRoom', { 
+                name: name, 
+                code: code,   // Pour ton serveur actuel
+                roomId: code  // Au cas où
+            });
+        }
       };
 
       if (window.HOL.onEnter) {
@@ -116,27 +121,55 @@
     }
   }
 
-  function initSocket() {
-    const s = window.HOL.socket;
-    if(!s) return;
-
-    s.off('roomJoined');
-    s.on('roomJoined', (room) => {
-      window.HOL.state.room = room;
-      window.HOL.state.roomCode = room.id; // Le serveur envoie bien { id: code } maintenant
-      window.HOL.state.myId = s.id;
+  // Fonction pour entrer dans le lobby (factorisée)
+  function enterLobby(roomData) {
+      // Normalisation : le serveur envoie parfois 'code', parfois 'id'
+      const realId = roomData.id || roomData.code;
+      
+      window.HOL.state.room = roomData;
+      window.HOL.state.roomCode = realId;
+      window.HOL.state.myId = window.HOL.socket.id;
 
       window.HOL.show('screen-lobby');
       const home = document.getElementById('screen-home');
       if(home) home.style.display = 'none';
 
       const codeDisplay = document.getElementById('lobby-code');
-      if(codeDisplay) codeDisplay.textContent = room.id;
+      if(codeDisplay) codeDisplay.textContent = realId;
 
-      updateLobbyUI(room);
+      // Si on a déjà des joueurs, on affiche, sinon on attend l'update
+      if (roomData.players) {
+        updateLobbyUI(roomData);
+      } else {
+        // On affiche au moins le créateur (nous) en attendant la mise à jour serveur
+        const myName = document.getElementById('name-create')?.value || 'Moi';
+        updateLobbyUI({ players: [{ id: window.HOL.socket.id, name: myName, isHost: true }] });
+      }
+  }
+
+  function initSocket() {
+    const s = window.HOL.socket;
+    if(!s) return;
+
+    s.off('roomJoined');
+    s.off('roomCreated');
+
+    // Cas 1 : Le serveur envoie 'roomJoined' (Le Joiner)
+    s.on('roomJoined', (room) => {
+      console.log("✅ Room Joined reçue");
+      enterLobby(room);
+    });
+
+    // Cas 2 : Le serveur envoie SEULEMENT 'roomCreated' (Le Créateur)
+    // C'est ici le FIX pour ton serveur non-modifié
+    s.on('roomCreated', (data) => {
+       console.log("✅ Room Created reçue (Fix Host)");
+       // On force l'entrée car le serveur ne nous enverra pas roomJoined
+       enterLobby(data);
     });
 
     s.on('updatePlayerList', (players) => {
+      // On met à jour la liste sans tout recharger
       if (window.HOL.state.room) window.HOL.state.room.players = players;
       updateLobbyUI({ players });
     });
@@ -177,9 +210,7 @@
       row.style.cssText = 'display:flex;align-items:center;background:rgba(255,255,255,0.05);padding:10px;border-radius:12px;margin-bottom:8px;border:1px solid rgba(255,255,255,0.05);';
       
       const img = document.createElement('img');
-      // On utilise RoboHash : super fiable, pas de bug de version
       img.src = `https://robohash.org/${encodeURIComponent(p.name)}.png?set=set1&size=64x64`;
-      
       img.style.cssText = 'width:40px;height:40px;border-radius:50%;margin-right:12px;background:#1a1625;border:2px solid rgba(255,255,255,0.1);';
       
       const txt = document.createElement('span');
