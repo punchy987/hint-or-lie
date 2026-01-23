@@ -1,6 +1,7 @@
-// Phase "Résultat" + prêt manche suivante
+// public/js/features/results.js
+// Phase "Résultat" : Révélation de l'Imposteur avec AVATAR 📸
+
 (function () {
-  // + toast (tu l’utilises plus bas)
   const { $, el, show, socket, state, toast } = window.HOL;
 
   function initUI() {
@@ -19,15 +20,43 @@
       $('res-domain').textContent = res.domain || '?';
       $('res-common').textContent = res.common || '';
 
-      // L’imposteur n’a PAS de mot (on laisse un tiret visuel si l’élément existe)
+      // L’imposteur n’a PAS de mot
       if ($('res-imp')) $('res-imp').textContent = '—';
 
-      $('res-imp-name').textContent = res.impostorName || '(?)';
+      // --- NOUVEAU : AVATAR DE L'IMPOSTEUR ---
+      const impName = res.impostorName || '(?)';
+      const impContainer = $('res-imp-name');
+      
+      // On vide le conteneur pour mettre l'image + le nom proprement
+      impContainer.innerHTML = '';
+      impContainer.style.display = 'flex';
+      impContainer.style.flexDirection = 'column'; // L'un sous l'autre pour bien centrer
+      impContainer.style.alignItems = 'center';
+      impContainer.style.gap = '10px';
 
-      // ✅ Nouveau : mensonge = indice de l’imposteur envoyé par le serveur
-      // (serveur: io.to(code).emit('roundResult', { ..., impostorHint })
+      // 1. L'Image de l'Imposteur
+      const img = document.createElement('img');
+      img.src = `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(impName)}&backgroundColor=b6e3f4,c0aede,d1d4f9`;
+      img.style.width = '80px';
+      img.style.height = '80px';
+      img.style.borderRadius = '50%';
+      img.style.border = '4px solid #ef4444'; // GROSSE Bordure rouge !
+      img.style.boxShadow = '0 0 20px rgba(239, 68, 68, 0.5)'; // Lueur rouge
+
+      // 2. Le Nom
+      const nameSpan = document.createElement('span');
+      nameSpan.textContent = impName;
+      nameSpan.style.fontSize = '1.5rem';
+      nameSpan.style.fontWeight = 'bold';
+      nameSpan.style.color = '#ef4444'; // Texte rouge aussi
+
+      impContainer.appendChild(img);
+      impContainer.appendChild(nameSpan);
+      // ---------------------------------------
+
+      // Le mensonge (indice de l'imposteur)
       const lie = res.impostorHint || '—';
-      const lieEl = $('res-imp-lie') || $('res-imp-word'); // compat si tu as déjà créé res-imp-word
+      const lieEl = $('res-imp-lie') || $('res-imp-word');
       if (lieEl) lieEl.textContent = lie;
 
       // bannière perso
