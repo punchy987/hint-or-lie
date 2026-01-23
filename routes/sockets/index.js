@@ -89,6 +89,11 @@ module.exports = function setupSockets(io, db){
       if (r && r.players.has(socket.id)) r.players.get(socket.id).deviceId = profile.deviceId;
 
       socket.emit('roomCreated', { code });
+      
+      // FIX MAJEUR ICI : On doit dire au client qu'il a rejoint la salle !
+      // On envoie "id" car le client attend room.id, pas room.code
+      socket.emit('roomJoined', { id: code }); 
+
       broadcast(io, code);
     });
 
@@ -110,7 +115,7 @@ module.exports = function setupSockets(io, db){
         deviceId: profile.deviceId
       });
 
-      // Rejoint en cours de manche → spectateur (ne pas gonfler les compteurs)
+      // Rejoint en cours de manche → spectateur
       if (r.state === 'hints' || r.state === 'voting') {
         const p = r.players.get(socket.id);
         p.spectator = true;
@@ -127,7 +132,8 @@ module.exports = function setupSockets(io, db){
         }
       }
 
-      socket.emit('roomJoined', { code });
+      // FIX MINEUR : On envoie { id: code } pour matcher le client
+      socket.emit('roomJoined', { id: code });
       broadcast(io, code);
 
       r.lobbyReady ||= new Set();
@@ -258,24 +264,21 @@ module.exports = function setupSockets(io, db){
         return socket.emit('errorMsg', 'Tu voteras à la prochaine manche (spectateur)');
       }
 
-      // Résolution robuste de l'auteur à partir de l'indice
       let authorId = null;
       if (hintId && r.hintAuthor && typeof r.hintAuthor.get === 'function') {
-        authorId = r.hintAuthor.get(hintId) || null; // format nouveau
+        authorId = r.hintAuthor.get(hintId) || null;
       }
       if (!authorId && targetId && r.players.has(targetId)) {
-        authorId = targetId; // rétro-compat: targetId = playerId
+        authorId = targetId; 
       }
       if (!authorId && hintId && r.players.has(hintId)) {
-        authorId = hintId; // rétro-compat: anciens payloads (id == playerId)
+        authorId = hintId; 
       }
       if (!authorId) return;
 
-      // Enregistre le vote (toujours un playerId)
       me.vote = authorId;
       socket.emit('voteAck');
 
-      // Compteur
       const submitted = Array.from(r.active).reduce(
         (acc, id) => acc + (r.players.get(id)?.vote ? 1 : 0),
         0
@@ -284,7 +287,6 @@ module.exports = function setupSockets(io, db){
 
       io.to(joined.code).emit('phaseProgress', { phase: 'voting', submitted, total });
 
-      // Fin anticipée
       if (submitted === total) {
         controller.finishVoting(joined.code);
       } else {
@@ -292,7 +294,7 @@ module.exports = function setupSockets(io, db){
       }
     });
 
-    // ---- playerReadyNext (reveal -> manche suivante)
+    // ---- playerReadyNext
     socket.on('playerReadyNext', ()=>{
       const r = rooms.get(joined.code); if(!r) return; if (r.state !== 'reveal') return;
       r.readyNext ||= new Set();
@@ -303,7 +305,7 @@ module.exports = function setupSockets(io, db){
       }
     });
 
-    // ---- resetScores (host only)
+    // ---- resetScores
     socket.on('resetScores', ()=>{
       const r = rooms.get(joined.code); if(!r) return;
       if (r.hostId !== socket.id) return socket.emit('errorMsg',"Seul l'hôte peut réinitialiser");
@@ -325,11 +327,9 @@ module.exports = function setupSockets(io, db){
       const wasHost = (r.hostId === socket.id);
       const wasImpostor = !!me?.isImpostor;
 
-      // retirer le joueur (players + active)
       r.players.delete(socket.id);
       if (r.active?.has(socket.id)) r.active.delete(socket.id);
 
-      // nettoyer ready sets + éventuel compte à rebours lobby
       if (r.lobbyReady?.has(socket.id)) {
         r.lobbyReady.delete(socket.id);
         io.to(code).emit('lobbyReadyProgress', { ready: r.lobbyReady.size, total: r.players.size });
@@ -340,19 +340,15 @@ module.exports = function setupSockets(io, db){
         io.to(code).emit('readyProgress', { ready: r.readyNext.size, total: r.players.size });
       }
 
-      // si plus personne → supprimer la room
       if (r.players.size === 0) { rooms.delete(code); return; }
 
-      // transfert d’hôte si besoin
       if (wasHost) {
         const first = r.players.keys().next().value;
         if (first) r.hostId = first;
       }
 
-      // message système
       io.to(code).emit('system', { text: `👋 ${name} a quitté la partie` });
 
-      // si on est en manche et que les actifs < 3 → retour lobby immédiat
       if ((r.state === 'hints' || r.state === 'voting') && r.active && r.active.size < 3) {
         clearRoomTimer(r);
         for (const id of r.active) {
@@ -371,7 +367,6 @@ module.exports = function setupSockets(io, db){
         return;
       }
 
-      // réconcilier la phase en cours (compteurs avec r.active)
       if (r.state === 'hints') {
         const submitted = Array.from(r.active || []).filter(id => typeof r.players.get(id)?.hint === 'string').length;
         io.to(code).emit('phaseProgress', { phase:'hints', submitted, total: (r.active?.size || 0) });
@@ -382,7 +377,6 @@ module.exports = function setupSockets(io, db){
         if (r.active && submitted === r.active.size) controller.finishVoting(code);
       }
 
-      // cas spécial : l’imposteur a quitté pendant la manche → victoire équipiers immédiate
       if (wasImpostor && (r.state === 'hints' || r.state === 'voting')) {
         clearRoomTimer(r);
         for (const id of r.active || []) {
@@ -396,7 +390,7 @@ module.exports = function setupSockets(io, db){
           impostorName: name,
           common: r.words?.common,
           impostor: null,
-          impostorHint: null, // FIX: évitera le crash
+          impostorHint: null,
           commonDisplay: r.words?.common,
           impostorDisplay: "—",
           votes: {},
@@ -408,7 +402,6 @@ module.exports = function setupSockets(io, db){
         r.readyNext = new Set();
         io.to(code).emit('readyProgress', { ready: 0, total: r.players.size });
 
-        // fin de partie éventuelle (seuil 10)
         const arr = Array.from(r.players.values());
         const maxScore = Math.max(0, ...arr.map(p => p.score || 0));
         if (maxScore >= 10) {
